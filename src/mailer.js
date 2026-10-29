@@ -7,7 +7,7 @@ import nodemailer from 'nodemailer';
 export const mailConfigured = () => Boolean(process.env.SMTP_HOST?.trim() && process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim());
 
 let transport;
-export async function sendMail({ to, subject, text, html }) {
+export async function sendMail({ to, subject, text, html, replyTo }) {
   if (!mailConfigured()) {
     console.log(`\n[email not sent: SMTP is not set up in .env]\nTo: ${to}\nSubject: ${subject}\n${text}\n`);
     return { delivered: false };
@@ -20,6 +20,6 @@ export async function sendMail({ to, subject, text, html }) {
     requireTLS: port !== 465,
     auth: { user: process.env.SMTP_USER.trim(), pass: process.env.SMTP_PASS.trim() },
   });
-  await transport.sendMail({ from: process.env.MAIL_FROM?.trim() || `Fin Advisor <${process.env.SMTP_USER.trim()}>`, to, subject, text, html });
+  await transport.sendMail({ from: process.env.MAIL_FROM?.trim() || `Fin Advisor <${process.env.SMTP_USER.trim()}>`, to, replyTo, subject, text, html });
   return { delivered: true };
 }

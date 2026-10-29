@@ -13,8 +13,9 @@ import { ASSET_ASSUMPTIONS, ASSET_VOLATILITY, GOAL_TYPES, EQUITY_STRESS_FALL, GL
 import { SPECIAL_REQUESTS } from './engine/guardrails.js';
 import { renderClientReport, renderBlocked } from './client-report.js';
 import { authRouter, requireAdviser, sessionAdviser } from './auth.js';
-import { mailConfigured } from './mailer.js';
+import { mailConfigured, sendMail } from './mailer.js';
 
+const PUBLIC_DIR = path.resolve(import.meta.dirname, '..', 'public');
 const app = express();
 // Routes match exactly as written, so /API/cases cannot reach /api/cases past the sign-in check.
 app.set('case sensitive routing', true);
@@ -25,7 +26,8 @@ app.use('/api/auth', authRouter);
 // the sign-in page, static assets, the fund and document statistics the front page shows, and
 // approved client reports (/client/<share token>), which the adviser shares with the client.
 // Fintel (the floating help assistant) is public so it can help on the sign-in page; it is rate-limited.
-const PUBLIC_API = new Set(['GET /api/funds', 'GET /api/docs', 'GET /api/public-stats', 'POST /api/fintel']);
+// The contact form is public too, and limited per IP.
+const PUBLIC_API = new Set(['GET /api/funds', 'GET /api/docs', 'GET /api/public-stats', 'POST /api/fintel', 'POST /api/contact']);
 // The path as the file system sees it: decoded, lower-case (Windows ignores case) and without
 // trailing dots or spaces (Windows drops them), so /App.html, /%61pp.html and /app.html. are all
 // recognised as the co-pilot page.
@@ -39,7 +41,7 @@ app.use((req, res, next) => {
   if ((p === '/api' || p.startsWith('/api/')) && !PUBLIC_API.has(`${req.method} ${p}`)) return requireAdviser(req, res, next);
   next();
 });
-app.use(express.static(path.resolve(import.meta.dirname, '..', 'public'), { caseSensitive: true }));
+app.use(express.static(PUBLIC_DIR, { caseSensitive: true }));
 // Local copies of the source PDFs, so page links work offline and for uploaded documents.
 app.use('/docs', express.static(DOCS_DIR, { caseSensitive: true, setHeaders: (res) => res.setHeader('Content-Type', 'application/pdf') }));
 
@@ -259,6 +261,37 @@ app.post('/api/fintel', async (req, res) => {
   catch (e) { res.status(502).json({ error: `Fintel could not answer just now (${e.message}). Please try again.` }); }
 });
 
+// Contact form (public pages). Messages are emailed to CONTACT_EMAIL (default: the SMTP account);
+// without SMTP they are printed in the server window, like reset links. 5 messages per IP per hour.
+const CONTACT_WINDOW_MS = 60 * 60_000;
+const CONTACT_TOPICS = ['General question', 'Demo or onboarding', 'Account or technical support', 'Privacy or data request', 'Partnership'];
+const contactHits = new Map();
+app.post('/api/contact', async (req, res) => {
+  const field = (k, max) => String(req.body[k] ?? '').trim().slice(0, max);
+  const name = field('name', 120), email = field('email', 200), organisation = field('organisation', 160), message = field('message', 5000);
+  const topic = CONTACT_TOPICS.includes(req.body.topic) ? req.body.topic : CONTACT_TOPICS[0];
+  const thanks = { ok: true, message: 'Thank you. Your message has been sent, and we will reply by email.' };
+  if (field('website', 200)) return res.json(thanks); // honeypot: filled only by bots
+  if (!name) return res.status(400).json({ error: 'Enter your name.' });
+  if (!/^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (message.length < 10) return res.status(400).json({ error: 'Write a message of at least 10 characters.' });
+  const h = contactHits.get(req.ip);
+  if (!h || Date.now() - h.first >= CONTACT_WINDOW_MS) contactHits.set(req.ip, { count: 1, first: Date.now() });
+  else if (++h.count > 5) return res.status(429).json({ error: `You've sent several messages already. Try again in ${Math.ceil((CONTACT_WINDOW_MS - (Date.now() - h.first)) / 60_000)} minute(s).` });
+  const to = process.env.CONTACT_EMAIL?.trim() || process.env.SMTP_USER?.trim() || '(CONTACT_EMAIL not set)';
+  try {
+    await sendMail({
+      to, replyTo: `${name.replace(/[<>"\r\n]/g, '')} <${email}>`,
+      subject: `[Fin Advisor contact] ${topic}: ${name}`.replace(/[\r\n]/g, ' '),
+      text: `Name: ${name}\nEmail: ${email}\nFirm / registration: ${organisation || '-'}\nTopic: ${topic}\n\n${message}\n`,
+    });
+    res.json(thanks);
+  } catch (e) {
+    console.error('Contact message could not be emailed:', e.message);
+    res.status(502).json({ error: 'Your message could not be sent just now. Please try again later.' });
+  }
+});
+
 app.delete('/api/cases/:id/research', (req, res) => {
   db.prepare('DELETE FROM research WHERE case_id = ?').run(+req.params.id);
   audit(+req.params.id, 'RESEARCH_CHAT_CLEARED', {});
@@ -313,6 +346,21 @@ app.get('/client/:token', (req, res) => {
   const review = db.prepare("SELECT * FROM reviews WHERE draft_id = ? AND action = 'approve' ORDER BY id DESC LIMIT 1").get(d.id);
   audit(d.case_id, 'CLIENT_OUTPUT_VIEWED', { version: d.version });
   res.send(renderClientReport(JSON.parse(d.draft_json), { version: d.version, adviser: review.adviser, approvedAt: review.created_at }));
+});
+
+// Error pages. API callers keep getting JSON; browsers get the styled 404/500 pages.
+const isApi = (req) => req.path === '/api' || req.path.startsWith('/api/');
+app.use((req, res) => {
+  if (isApi(req)) return res.status(404).json({ error: 'not found' });
+  res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
+});
+app.use((err, req, res, _next) => {
+  // Client errors raised by middleware (e.g. malformed JSON, body too large) keep their status.
+  const status = err.status >= 400 && err.status < 500 ? err.status : 500;
+  if (status === 500) console.error(err);
+  if (res.headersSent) return res.end();
+  if (isApi(req) || status !== 500) return res.status(status).json({ error: status === 500 ? 'Something went wrong.' : err.message });
+  res.status(500).sendFile(path.join(PUBLIC_DIR, '500.html'));
 });
 
 const port = +process.env.PORT || 4400;

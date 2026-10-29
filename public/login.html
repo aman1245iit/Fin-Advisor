@@ -77,6 +77,9 @@
     .msg.ok { color: var(--ok); background: rgba(158, 216, 160, .08); border: 1px solid rgba(158, 216, 160, .25); }
     [hidden] { display: none !important; }
     :focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+    .legal { display: flex; justify-content: center; gap: 8px 18px; flex-wrap: wrap; padding: 0 16px 28px; font-size: 12px; }
+    .legal a { color: var(--muted); text-decoration: none; }
+    .legal a:hover { color: var(--gold-hi); }
     @media (max-width: 420px) { .card { padding: 26px 18px; } }
   </style>
 </head>
@@ -143,6 +146,12 @@
       </section>
     </div>
   </main>
+  <footer class="legal" aria-label="Footer">
+    <a href="/about.html">About us</a>
+    <a href="/contact.html">Contact us</a>
+    <a href="/privacy.html">Privacy policy</a>
+    <a href="/terms.html">Terms &amp; conditions</a>
+  </footer>
 
   <script>
     const $ = (s, el = document) => el.querySelector(s);

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contact Us · Fin Advisor</title>
+  <meta name="description" content="Contact the Fin Advisor team about a demo, support, partnerships or a privacy request.">
+  <meta name="theme-color" content="#2a0e12">
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <div class="wrap">
+    <nav class="top" aria-label="Main">
+      <a class="mini" href="/"><img src="/favicon.svg" alt="" width="34" height="34"><span class="caps">Fin Advisor</span></a>
+      <div class="nav-links">
+        <a href="/about.html">About</a>
+        <a href="/contact.html" aria-current="page">Contact</a>
+        <a href="/login.html">Sign in</a>
+      </div>
+    </nav>
+
+    <header class="page-head">
+      <p class="eyebrow caps">Contact us</p>
+      <h1>Let's talk.</h1>
+      <p>Questions about the co-pilot, help with your account, or a request about your data. Send us a message and we'll reply by email.</p>
+    </header>
+
+    <section class="section split">
+      <form class="contact" id="contactForm" novalidate>
+        <div class="row2">
+          <div class="field">
+            <label for="c-name">Your name</label>
+            <input id="c-name" name="name" autocomplete="name" required maxlength="120">
+          </div>
+          <div class="field">
+            <label for="c-email">Email</label>
+            <input id="c-email" name="email" type="email" autocomplete="email" required maxlength="200">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="c-org">Firm or SEBI registration (optional)</label>
+            <input id="c-org" name="organisation" autocomplete="organization" maxlength="160">
+          </div>
+          <div class="field">
+            <label for="c-topic">Topic</label>
+            <select id="c-topic" name="topic">
+              <option>General question</option>
+              <option>Demo or onboarding</option>
+              <option>Account or technical support</option>
+              <option>Privacy or data request</option>
+              <option>Partnership</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="c-message">Message</label>
+          <textarea id="c-message" name="message" required maxlength="5000"></textarea>
+        </div>
+        <!-- Left empty by people; bots that fill every field are ignored. -->
+        <div class="hp" aria-hidden="true"><label for="c-website">Website</label><input id="c-website" name="website" tabindex="-1" autocomplete="off"></div>
+        <p class="msg err" role="alert" hidden></p>
+        <p class="msg ok" role="status" hidden></p>
+        <div><button class="btn solid" type="submit">Send message <span aria-hidden="true">→</span></button></div>
+        <p class="fine">We use your details only to reply to you. See our <a href="/privacy.html">privacy policy</a>.</p>
+      </form>
+
+      <div class="prose">
+        <div class="grid3" style="grid-template-columns: 1fr; gap: 14px;">
+          <article class="card">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M6 16l4-5 3 3 5-7" /><circle cx="18" cy="7" r="1.6" /></svg>
+            <h3>Advisers &amp; firms</h3>
+            <p>Ask for a walkthrough of the six screens, or for help setting up a workspace for your practice.</p>
+          </article>
+          <article class="card">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01" /></svg>
+            <h3>Support</h3>
+            <p>Signed in already? The Fintel assistant (bottom corner) answers most how-to questions straight away.</p>
+          </article>
+          <article class="card">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z" /><path d="M9 12h6" /></svg>
+            <h3>Clients of an adviser</h3>
+            <p>For questions about your plan or your personal data, please contact your adviser first. They are responsible for your advice and your records.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <footer class="site">
+      <span class="caps">Fin Advisor · Trusted Guidance</span>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/about.html">About us</a>
+        <a href="/contact.html">Contact us</a>
+        <a href="/privacy.html">Privacy policy</a>
+        <a href="/terms.html">Terms &amp; conditions</a>
+      </nav>
+    </footer>
+  </div>
+
+  <script>
+    const form = document.getElementById('contactForm');
+    const err = form.querySelector('.msg.err'), ok = form.querySelector('.msg.ok');
+    const topic = new URLSearchParams(location.search).get('topic');
+    if (topic) [...form.topic.options].forEach((o) => { if (o.text.toLowerCase().startsWith(topic.toLowerCase())) o.selected = true; });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.hidden = ok.hidden = true;
+      const data = Object.fromEntries(new FormData(form));
+      const problem = !data.name.trim() ? 'Enter your name.'
+        : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim()) ? 'Enter a valid email address.'
+        : data.message.trim().length < 10 ? 'Write a message of at least 10 characters.' : null;
+      if (problem) { err.textContent = problem; err.hidden = false; return; }
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      try {
+        const r = await fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || 'Your message could not be sent. Please try again.');
+        form.reset();
+        ok.textContent = body.message; ok.hidden = false;
+      } catch (e2) {
+        err.textContent = e2.message; err.hidden = false;
+      } finally { btn.disabled = false; }
+    });
+  </script>
+  <script src="/fintel.js" data-theme="dark" defer></script>
+</body>
+</html>
