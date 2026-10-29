@@ -230,3 +230,11 @@ test('retiree withdrawing too fast is flagged high', () => {
   const d = runPipeline({ ...retiree, existingInvestments: 2000000, savingsToInvest: 0, monthlyExpenses: 60000 });
   assert.ok(d.guardrails.flags.some((x) => x.code === 'WITHDRAWAL_RATE_HIGH' && x.severity === 'high'));
 });
+
+test('tax reference: current equity-fund rates, holding periods and exemption, with an as-of date', async () => {
+  const { taxRulesText, TAX_AS_OF } = await import('../src/engine/tax.js');
+  const all = taxRulesText();
+  for (const s of ['20%', '12.5%', '₹1,25,000', '12 months', 'slab rate', '194K', TAX_AS_OF]) assert.ok(all.includes(s), s);
+  const debt = taxRulesText(['debt']);
+  assert.ok(debt.includes('1 April 2023') && !debt.includes('20% (s. 111A)'), 'only the debt rules and general points');
+});

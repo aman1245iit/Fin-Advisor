@@ -22,6 +22,7 @@ import { allocate, planGoal, simulateGoal, GOAL_TYPES } from './planner.js';
 import { LEVELS } from './risk.js';
 import { shortlist } from './funds.js';
 import { investRangeText } from './pipeline.js';
+import { TAX_SOURCE, taxRulesText } from './tax.js';
 
 export const MODEL = 'claude-opus-5-5';
 const MAX_TURNS = 10;
@@ -84,7 +85,7 @@ const SYSTEM = `You are the research and planning assistant inside Fin Advisor, 
 
 How to work:
 - Use the tools to find facts. Search the documents, look up fund facts, compare funds, read whole pages when a passage is cut off, and read the client case when the question is about this client.
-- Start with the library and the engines. When they do not cover the question (a newer SEBI circular, a regulation, a fund or AMC outside the library, a current figure), use search_official_sources and read_official_source. These reach only official SEBI-regulated sources: SEBI, AMFI, RBI, the exchanges and depositories, SEBI-registered mutual fund AMCs, and the Income Tax Department. Tax rates and exemption limits change in most Budgets: for any tax question search with site "incometax.gov.in" and quote the current rules from what you read, never from memory. Never rely on any other website, blog or news source, and never answer fund-specific or regulatory facts from memory.
+- Start with the library and the engines. When they do not cover the question (a newer SEBI circular, a regulation, a fund or AMC outside the library, a current figure), use search_official_sources and read_official_source. These reach only official SEBI-regulated sources: SEBI, AMFI, RBI, the exchanges and depositories, SEBI-registered mutual fund AMCs, and the Income Tax Department. For any tax question call get_tax_rules first and give the rate, the holding period and any exemption that apply, with the "as of" date and the advice to confirm the current year's rates; search with site "incometax.gov.in" only for a tax point get_tax_rules does not cover. Never state tax rates from memory. Never rely on any other website, blog or news source, and never answer fund-specific or regulatory facts from memory.
 - Be thorough: when a question touches several things (e.g. a fund's cost, risk, returns and exit load), look each one up and cover them all. Prefer calling tools over saying you don't know.
 - To plan funds for a goal ("I need ₹25 lakh in 12 years for my child's education", "where should I invest ₹10,000 a month for retirement?"), call plan_goal. It returns the future cost, the monthly SIP, the asset allocation, the screened fund for each part with its monthly amount, the chance of reaching the target and the de-risking path. Call it once per goal. If a client case is open, plan_goal uses that client's risk level unless the adviser gives one. If no case is open and the risk level is unknown, plan_goal assumes Moderate; say so and offer to re-run it for Conservative or Aggressive.
 - When asked how much the client should invest, lead with the case's "Recommended investment" range (monthly, lump sum, and any SWP), then explain it from the reasons given there; the goals' total SIP is what the goals need, not the recommendation.
@@ -135,6 +136,15 @@ const TOOLS = [
     name: 'read_page',
     description: 'Read the full extracted text of one document page, e.g. to see a whole table that a search passage cut off.',
     input_schema: { type: 'object', properties: { document_id: { type: 'string' }, page: { type: 'integer' } }, required: ['document_id', 'page'], additionalProperties: false },
+  },
+  {
+    name: 'get_tax_rules',
+    description: 'Current tax on mutual fund investments for resident individuals: short- and long-term capital-gains rates, holding periods and the yearly exemption for equity-oriented, debt and other funds, dividend tax and TDS, SIP and switch treatment. Use first for any tax question; it is quicker and more complete than a web search.',
+    input_schema: {
+      type: 'object',
+      properties: { topics: { type: 'array', items: { type: 'string', enum: ['equity', 'debt', 'other', 'dividends'] }, description: 'Optional: only these fund types (general points are always included).' } },
+      additionalProperties: false,
+    },
   },
   {
     name: 'get_client_case',
@@ -317,6 +327,9 @@ function makeExecutor({ draft, contextCodes }) {
       const pg = pageText(document_id, page);
       if (!pg) throw new Error(`No page ${page} in document "${document_id}".`);
       return `[${addSource({ label: `${pg.title}, p.${pg.page}`, url: pg.url, kind: 'document', doc: pg.doc, page: pg.page })}] ${pg.text.slice(0, 6000)}`;
+    },
+    get_tax_rules({ topics } = {}) {
+      return `[${addSource({ label: TAX_SOURCE.label, url: TAX_SOURCE.url, kind: 'official' })}]\n${taxRulesText(Array.isArray(topics) ? topics : [])}`;
     },
     get_client_case() {
       if (!draft) throw new Error('No client case is open. Answer from documents only.');
