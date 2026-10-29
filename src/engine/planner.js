@@ -126,6 +126,7 @@ export function planGoal(goal, { riskIndex, maxLossPct, startAge }) {
   const futureCost = C * Math.pow(1 + i, n);
   const savingsFV = S * Math.pow(1 + R, n);
   const gap = Math.max(0, futureCost - savingsFV);
+  const lumpSumNeeded = gap / Math.pow(1 + R, n); // one-time amount today that would close the gap instead of a SIP
   const r = monthlyRateEffective(R);
   const sip = sipFor(gap, r, N);
   const sipNominal = sipFor(gap, monthlyRateNominal(R), N);
@@ -167,7 +168,7 @@ export function planGoal(goal, { riskIndex, maxLossPct, startAge }) {
   return {
     ...goal,
     typeLabel: (GOAL_TYPES[goal.type] ?? GOAL_TYPES.other).label,
-    futureCost, savingsFV, gap, months: N,
+    futureCost, savingsFV, gap, lumpSumNeeded, months: N,
     monthlyRate: r,
     sip, sipNominal, sipGlide,
     recommendedSip,
@@ -177,6 +178,7 @@ export function planGoal(goal, { riskIndex, maxLossPct, startAge }) {
       futureCost: `FV = ${fmt(C)} × (1 + ${pct(i)})^${n} = ${fmt(futureCost)}`,
       savings: `Existing ${fmt(S)} × (1 + ${pct(R)})^${n} = ${fmt(savingsFV)}`,
       gap: `Gap = ${fmt(futureCost)} − ${fmt(savingsFV)} = ${fmt(gap)}`,
+      lumpSum: `Instead of a SIP: ${fmt(gap)} ÷ (1 + ${pct(R)})^${n} = ${fmt(lumpSumNeeded)} invested today`,
       rate: `r = (1 + ${pct(R)})^(1/12) − 1 = ${(r * 100).toFixed(4)}% per month (effective). Nominal R/12 would be ${(R / 12 * 100).toFixed(4)}%.`,
       sip: `P = ${fmt(gap)} × r ÷ ((1 + r)^${N} − 1) = ${fmt(sip)} per month (nominal convention: ${fmt(sipNominal)})`,
       glide: `With the glide path's expected return falling from ${pct(glide[0].expectedReturn)} as the goal nears, the SIP needed is ${fmt(sipGlide)} per month.`,
@@ -301,20 +303,98 @@ export function deriskSchedule(glide, projection, sip) {
   };
 }
 
+// ---------- How much to invest ----------
+// The client is not asked for an amount. The co-pilot works out a range from the finances:
+//  • Monthly: what the goals need (recommended SIP → SIP for 80% confidence), kept within a share
+//    of the monthly surplus so a buffer remains for irregular spending.
+//  • Lump sum: savings not yet invested, after topping up the emergency fund, plus any emergency
+//    money above the target. The lower end keeps a further cushion in the bank.
+//  • Retired / non-earning clients: expenses that income does not cover are drawn from savings by
+//    a systematic withdrawal plan (SWP); the next few years of withdrawals sit in liquid funds.
+export const INVEST_SHARE = { stable: [0.5, 0.8], variable: [0.4, 0.7], irregular: [0.3, 0.6], none: [0.3, 0.6] };
+export const EXTRA_CUSHION_MONTHS = 3;
+export const WITHDRAWAL_BUCKET_YEARS = 3;
+export const WITHDRAWAL_RATE = { caution: 0.04, high: 0.06 };
+const roundTo = (x, step) => Math.max(0, Math.round(x / step) * step);
+
+export function investmentRange(client, fin, goals) {
+  const stability = fin.income > 0 ? client.incomeStability || 'stable' : 'none';
+  const [shareLo, shareHi] = INVEST_SHARE[stability] ?? INVEST_SHARE.stable;
+  const need = goals.reduce((s, g) => s + g.recommendedSip, 0);
+  const need80 = goals.reduce((s, g) => s + (g.monteCarlo?.sipFor[80] ?? g.recommendedSip), 0);
+  const lumpSumNeeded = goals.reduce((s, g) => s + g.lumpSumNeeded, 0);
+  const basis = [];
+
+  // Monthly.
+  const affordLow = Math.max(0, fin.surplus * shareLo), affordHigh = Math.max(0, fin.surplus * shareHi);
+  let mLow = 0, mHigh = 0;
+  if (fin.surplus > 0) {
+    // Goals beyond reach: invest what is affordable. Otherwise from what the goals need up to the
+    // 80%-confidence SIP, never above the affordable share of surplus.
+    mLow = need > affordHigh ? affordLow : need;
+    mHigh = need > affordHigh ? affordHigh : Math.min(affordHigh, Math.max(need80, need));
+    basis.push(`Monthly surplus ${fmt(fin.surplus)}; with ${stability === 'none' ? 'no regular' : stability} income, invest at most ${Math.round(shareHi * 100)}% of it (${fmt(affordHigh)}) so a buffer remains.`);
+    if (need > affordHigh) basis.push(`Goals need ${fmt(need)} a month, more than that limit: the range is capped at what the client can afford; goals must be extended, reduced or helped by a lump sum.`);
+    else basis.push(`Goals need ${fmt(need)} a month at the recommended SIP and ${fmt(need80)} for 80% confidence.`);
+    if (mHigh < affordLow) basis.push(`About ${fmt(affordLow - mHigh)} a month of surplus is still free: it could start a wealth-creation goal or prepay loans.`);
+  } else if (fin.nonEarning) {
+    basis.push(`Income does not cover expenses, so no monthly SIP: ${fmt(fin.monthlyDraw)} a month is drawn from savings instead.`);
+  } else {
+    basis.push('Expenses and EMIs use all income, so nothing can be invested monthly until cash flow improves.');
+  }
+
+  // Lump sum.
+  const emergencyTarget = fin.outgo * fin.emergencyTargetMonths;
+  const emergencySavings = +client.emergencySavings || 0;
+  const emergencyShort = Math.max(0, emergencyTarget - emergencySavings);
+  const emergencyExcess = Math.max(0, emergencySavings - emergencyTarget);
+  const emergencyTopUp = Math.min(fin.savingsToInvest, emergencyShort);
+  const available = fin.savingsToInvest - emergencyTopUp + emergencyExcess;
+  const cushion = fin.outgo * EXTRA_CUSHION_MONTHS;
+  const lHigh = available, lLow = Math.max(0, available - cushion);
+  if (emergencyTopUp > 0) basis.push(`First ${fmt(emergencyTopUp)} of the savings tops up the emergency fund to ${fin.emergencyTargetMonths} months of outgo (${fmt(emergencyTarget)}), kept in a liquid fund.`);
+  if (emergencyShort > emergencyTopUp) basis.push(`The emergency fund is still ${fmt(emergencyShort - emergencyTopUp)} short of ${fin.emergencyTargetMonths} months: build it before long-term investing.`);
+  if (emergencyExcess > 0) basis.push(`Emergency savings exceed ${fin.emergencyTargetMonths} months by ${fmt(emergencyExcess)}, which can be invested.`);
+  if (available > 0) basis.push(`Lump sum: ${lLow > 0 ? `${fmt(lLow)}–` : 'up to '}${fmt(lHigh)}. The lower end keeps a further ${EXTRA_CUSHION_MONTHS} months of outgo in the bank. Invest equity portions through an STP over 3–6 months.`);
+  if (lumpSumNeeded > 0) basis.push(`A one-time ${fmt(lumpSumNeeded)} today would fully fund the goals without SIPs; any lump sum invested lowers the SIP needed.`);
+
+  // Retired / non-earning: withdrawals from savings.
+  let withdrawals = null;
+  if (fin.monthlyDraw > 0) {
+    const corpus = (+client.existingInvestments || 0) + available;
+    const annual = fin.monthlyDraw * 12;
+    const rate = corpus > 0 ? annual / corpus : Infinity;
+    const bucket = Math.min(corpus, annual * WITHDRAWAL_BUCKET_YEARS);
+    withdrawals = { monthly: fin.monthlyDraw, annual, corpus, rate, bucket, forGoals: corpus - bucket, yearsCovered: fin.savingsCoverYears };
+    basis.push(`Withdrawals of ${fmt(annual)} a year are ${Number.isFinite(rate) ? (rate * 100).toFixed(1) + '%' : 'more than all'} of investable savings (${fmt(corpus)}); up to ${(WITHDRAWAL_RATE.caution * 100).toFixed(0)}% a year is generally sustainable over a long retirement.`);
+    if (bucket > 0) basis.push(`Keep the next ${WITHDRAWAL_BUCKET_YEARS} years of withdrawals (${fmt(bucket)}) in liquid / short-debt funds and run a monthly SWP of ${fmt(fin.monthlyDraw)} from them; invest the rest as per the allocation and refill the bucket yearly.`);
+  }
+
+  return {
+    monthly: { low: roundTo(mLow, 100), high: roundTo(mHigh, 100), need, need80, affordLow, affordHigh, share: [shareLo, shareHi] },
+    lumpSum: { low: roundTo(lLow, 1000), high: roundTo(lHigh, 1000), available, emergencyTarget, emergencyTopUp, emergencyShort: emergencyShort - emergencyTopUp, cushion, needed: lumpSumNeeded },
+    withdrawals,
+    basis,
+  };
+}
+
 export function buildPlan(client, risk) {
   const riskIndex = risk.final.index;
   const maxLossPct = +client.maxLoss || 20;
   const goals = (client.goals || []).filter((g) => +g.currentCost > 0).map((g) => planGoal(g, { riskIndex, maxLossPct, startAge: +client.age }));
   const totalSip = goals.reduce((s, g) => s + g.recommendedSip, 0);
-  const budget = +client.monthlyInvestable || 0;
   const surplus = risk.financials.surplus;
 
-  // Combined current allocation, weighted by each goal's recommended SIP.
+  // Combined current allocation, weighted by each goal's recommended SIP (by future cost when
+  // existing savings already cover every goal and no SIP is needed).
+  const weightOf = (g) => (totalSip > 0 ? g.recommendedSip : g.futureCost);
+  const totalWeight = goals.reduce((s, g) => s + weightOf(g), 0) || 1;
   const combined = {};
-  for (const g of goals) for (const [k, w] of Object.entries(g.currentAllocation.weights)) combined[k] = (combined[k] || 0) + (w * g.recommendedSip) / (totalSip || 1);
+  for (const g of goals) for (const [k, w] of Object.entries(g.currentAllocation.weights)) combined[k] = (combined[k] || 0) + (w * weightOf(g)) / totalWeight;
   return {
-    goals, totalSip, budget, surplus,
+    goals, totalSip, surplus,
     sipToSurplus: surplus > 0 ? totalSip / surplus : Infinity,
+    investRange: investmentRange(client, risk.financials, goals),
     combinedAllocation: roundTo100(combined),
     assumptions: ASSET_ASSUMPTIONS,
     volatility: ASSET_VOLATILITY,

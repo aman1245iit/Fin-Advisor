@@ -46,6 +46,8 @@ export const db = {
     return { changes: r.rowsAffected, lastInsertRowid: r.lastInsertRowid === undefined ? undefined : Number(r.lastInsertRowid) };
   },
   exec: (sql) => client.executeMultiple(sql),
+  // Several statements as one transaction: all apply or none. Each is [sql, ...args].
+  batch: (stmts) => client.batch(stmts.map(([sql, ...args]) => ({ sql, args })), 'write'),
 };
 
 async function migrate() {
@@ -99,6 +101,15 @@ async function migrate() {
   const hasColumn = async (table, col) => (await db.all(`PRAGMA table_info(${table})`)).some((c) => c.name === col);
   if (!(await hasColumn('drafts', 'share_token'))) await db.exec('ALTER TABLE drafts ADD COLUMN share_token TEXT');
   if (!(await hasColumn('reviews', 'adviser_id'))) await db.exec('ALTER TABLE reviews ADD COLUMN adviser_id INTEGER');
+  // Each case belongs to the adviser who added it. Older cases are matched to their adviser
+  // through the CLIENT_PROFILE_SUBMITTED audit entry; any left unmatched are shown to no one.
+  if (!(await hasColumn('cases', 'adviser_id'))) {
+    await db.exec('ALTER TABLE cases ADD COLUMN adviser_id INTEGER');
+    await db.exec(`UPDATE cases SET adviser_id = (
+      SELECT json_extract(a.detail_json, '$.adviserId') FROM audit a
+      WHERE a.case_id = cases.id AND a.event = 'CLIENT_PROFILE_SUBMITTED' ORDER BY a.id LIMIT 1)`);
+  }
+  await db.exec('CREATE INDEX IF NOT EXISTS cases_adviser ON cases(adviser_id)');
   await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS drafts_share_token ON drafts(share_token)');
   // Drafts approved before share links existed get one, so they can still be shared.
   for (const { id } of await db.all("SELECT id FROM drafts WHERE status = 'APPROVED' AND share_token IS NULL")) {

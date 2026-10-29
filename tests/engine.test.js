@@ -7,7 +7,7 @@ import { backtest } from '../src/engine/backtest.js';
 import { runPipeline } from '../src/engine/pipeline.js';
 import { detectGuaranteeRequest } from '../src/engine/guardrails.js';
 import { answer, detectFunds } from '../src/engine/rag.js';
-import { patna, senior, aggressive } from './fixtures.js';
+import { patna, senior, aggressive, retiree } from './fixtures.js';
 
 const codes = (draft) => draft.guardrails.flags.map((f) => f.code);
 
@@ -192,4 +192,41 @@ test('research: comparisons, follow-ups and case-aware answers', async () => {
   const pick = d.funds[0].selected;
   const why = await answer(`Why was ${pick.name} chosen?`, { draft: d, contextCodes: d.funds.map((f) => f.selected?.code) });
   assert.match(why.facts[0].text, /Rank 1/);
+});
+
+test('investment amount is recommended as a range from the finances, not asked for', () => {
+  const r = runPipeline(patna).plan.investRange;
+  // ₹90k surplus, stable income → affordable 50–80%; goals need more, so the range is the affordable band.
+  assert.deepEqual([r.monthly.low, r.monthly.high], [45000, 72000]);
+  assert.ok(r.monthly.need > r.monthly.affordHigh);
+  const comfy = runPipeline({ ...patna, goals: [patna.goals[1]] }).plan.investRange;
+  assert.ok(comfy.monthly.low >= Math.round(comfy.monthly.need / 100) * 100 - 100 && comfy.monthly.high <= comfy.monthly.affordHigh);
+  assert.ok(comfy.monthly.low <= comfy.monthly.high);
+});
+
+test('lump sum: savings not yet invested top up the emergency fund first', () => {
+  const r = runPipeline({ ...patna, savingsToInvest: 1000000 }).plan.investRange;
+  assert.equal(Math.round(r.lumpSum.emergencyTopUp), 60000); // ₹3L held vs 6 × ₹60k
+  assert.equal(r.lumpSum.high, 940000);
+  assert.equal(r.lumpSum.low, 940000 - 180000);
+});
+
+test('retired client with no income: scored on savings cover, no SIP, lump sum + SWP', () => {
+  const d = runPipeline(retiree);
+  const f = d.risk.capacity.factors;
+  assert.ok(f.some((x) => x.key === 'savingsCoverYears') && !f.some((x) => x.key === 'surplusRatio'));
+  assert.equal(f.find((x) => x.key === 'incomeStability').points, 0);
+  const r = d.plan.investRange;
+  assert.equal(r.monthly.high, 0);
+  assert.equal(r.withdrawals.monthly, 45000);
+  assert.ok(r.lumpSum.high > 0 && r.lumpSum.emergencyTarget === 45000 * 12);
+  const c = codes(d);
+  assert.ok(!c.includes('NO_SURPLUS'));
+  assert.ok(c.includes('SWP_FROM_SAVINGS') || c.includes('WITHDRAWAL_RATE_ELEVATED') || c.includes('WITHDRAWAL_RATE_HIGH'));
+  assert.ok(c.includes('GOALS_FROM_SAVINGS'));
+});
+
+test('retiree withdrawing too fast is flagged high', () => {
+  const d = runPipeline({ ...retiree, existingInvestments: 2000000, savingsToInvest: 0, monthlyExpenses: 60000 });
+  assert.ok(d.guardrails.flags.some((x) => x.code === 'WITHDRAWAL_RATE_HIGH' && x.severity === 'high'));
 });

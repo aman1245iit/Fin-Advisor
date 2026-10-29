@@ -21,6 +21,7 @@ import { detectGuaranteeRequest, GUARANTEE_RESPONSE } from './guardrails.js';
 import { allocate, planGoal, simulateGoal, GOAL_TYPES } from './planner.js';
 import { LEVELS } from './risk.js';
 import { shortlist } from './funds.js';
+import { investRangeText } from './pipeline.js';
 
 export const MODEL = 'claude-opus-5-5';
 const MAX_TURNS = 10;
@@ -36,22 +37,36 @@ export const _setFetch = (f) => { fetchImpl = f; };
 // FREE_AI_BASE_URL override it.
 export const FREE_PRESETS = {
   // Groq's free limits are per model, so a rate-limited call moves to the next model instead of waiting.
-  groq: { label: 'Groq', prefix: 'gsk_', baseURL: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', fallbacks: ['openai/gpt-oss-20b'] },
-  gemini: { label: 'Google Gemini', prefix: 'AIza', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
-  openrouter: { label: 'OpenRouter', prefix: 'sk-or-', baseURL: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct:free' },
+  groq: { label: 'Groq', prefix: 'gsk_', env: ['GROQ_API_KEY'], baseURL: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', fallbacks: ['openai/gpt-oss-20b'] },
+  gemini: { label: 'Google Gemini', prefix: 'AIza', env: ['GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'], baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
+  openrouter: { label: 'OpenRouter', prefix: 'sk-or-', env: ['OPENROUTER_API_KEY'], baseURL: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct:free' },
 };
 
+// The key may be FREE_AI_API_KEY, or the name a provider's Vercel integration sets (GROQ_API_KEY,
+// GEMINI_API_KEY, …), with or without the prefix the Vercel Marketplace can add (e.g. FIN_GROQ_API_KEY).
+const FREE_KEY_NAMES = ['FREE_AI_API_KEY', ...Object.values(FREE_PRESETS).flatMap((p) => p.env)];
+export function freeKeyName() {
+  const names = Object.keys(process.env).filter((k) => process.env[k]?.trim());
+  for (const n of FREE_KEY_NAMES) {
+    const hit = names.find((k) => k === n) ?? names.find((k) => k.endsWith(`_${n}`));
+    if (hit) return hit;
+  }
+  return null;
+}
+
 export function freeConfig() {
-  const key = process.env.FREE_AI_API_KEY?.trim();
+  const name = freeKeyName();
+  const key = name && process.env[name].trim();
   if (!key) return null;
-  const id = process.env.FREE_AI_PROVIDER?.trim().toLowerCase() || Object.keys(FREE_PRESETS).find((p) => key.startsWith(FREE_PRESETS[p].prefix));
+  const named = Object.keys(FREE_PRESETS).find((p) => FREE_PRESETS[p].env.some((n) => name === n || name.endsWith(`_${n}`)));
+  const id = process.env.FREE_AI_PROVIDER?.trim().toLowerCase() || Object.keys(FREE_PRESETS).find((p) => key.startsWith(FREE_PRESETS[p].prefix)) || named;
   const preset = FREE_PRESETS[id] ?? {};
   const baseURL = (process.env.FREE_AI_BASE_URL?.trim() || preset.baseURL || '').replace(/\/+$/, '');
   const model = process.env.FREE_AI_MODEL?.trim() || preset.model;
   if (!baseURL || !model) return null; // unknown key type: set FREE_AI_PROVIDER or FREE_AI_BASE_URL + FREE_AI_MODEL
   const fallbacks = (process.env.FREE_AI_FALLBACK_MODELS?.trim() ? process.env.FREE_AI_FALLBACK_MODELS.split(',').map((m) => m.trim()) : preset.fallbacks ?? [])
     .filter((m) => m && m !== model);
-  return { key, baseURL, model, fallbacks, label: preset.label ?? 'Free AI' };
+  return { key, keyName: name, baseURL, model, fallbacks, label: preset.label ?? 'Free AI' };
 }
 
 const claudeEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
@@ -69,12 +84,13 @@ const SYSTEM = `You are the research and planning assistant inside Fin Advisor, 
 
 How to work:
 - Use the tools to find facts. Search the documents, look up fund facts, compare funds, read whole pages when a passage is cut off, and read the client case when the question is about this client.
-- Start with the library and the engines. When they do not cover the question (a newer SEBI circular, a regulation, a fund or AMC outside the library, a current figure), use search_official_sources and read_official_source. These reach only official SEBI-regulated sources: SEBI, AMFI, RBI, the exchanges and depositories, and SEBI-registered mutual fund AMCs. Never rely on any other website, blog or news source, and never answer fund-specific or regulatory facts from memory.
+- Start with the library and the engines. When they do not cover the question (a newer SEBI circular, a regulation, a fund or AMC outside the library, a current figure), use search_official_sources and read_official_source. These reach only official SEBI-regulated sources: SEBI, AMFI, RBI, the exchanges and depositories, SEBI-registered mutual fund AMCs, and the Income Tax Department. Tax rates and exemption limits change in most Budgets: for any tax question search with site "incometax.gov.in" and quote the current rules from what you read, never from memory. Never rely on any other website, blog or news source, and never answer fund-specific or regulatory facts from memory.
 - Be thorough: when a question touches several things (e.g. a fund's cost, risk, returns and exit load), look each one up and cover them all. Prefer calling tools over saying you don't know.
 - To plan funds for a goal ("I need ₹25 lakh in 12 years for my child's education", "where should I invest ₹10,000 a month for retirement?"), call plan_goal. It returns the future cost, the monthly SIP, the asset allocation, the screened fund for each part with its monthly amount, the chance of reaching the target and the de-risking path. Call it once per goal. If a client case is open, plan_goal uses that client's risk level unless the adviser gives one. If no case is open and the risk level is unknown, plan_goal assumes Moderate; say so and offer to re-run it for Conservative or Aggressive.
+- When asked how much the client should invest, lead with the case's "Recommended investment" range (monthly, lump sum, and any SWP), then explain it from the reasons given there; the goals' total SIP is what the goals need, not the recommendation.
 - Answer from tool results. Every tool result is labelled with source ids like [S3]. Cite the source id after each factual sentence, e.g. "The exit load is 1% if redeemed within 365 days [S2]."
 - Copy every number exactly as it appears in a tool result (same digits and units). Do not compute new figures, convert units, round, or add numbers from memory. If a calculation is needed, say which figures from the sources the adviser should use.
-- You may explain general concepts (what a SIP, an index fund or a glide path is) in plain words without a citation, but label it "General explanation" and use no figures in it. Fund-specific or regulatory facts must come from the tools; if neither the library nor the official sources cover them, say so and suggest which document the adviser could upload.
+- You may explain general concepts (what a SIP, an index fund or a glide path is) in plain words without a citation, but label it "General explanation" and use no figures in it (no rates, limits, holding periods or amounts). Fund-specific or regulatory facts must come from the tools; if neither the library nor the official sources cover them, say so and suggest which document the adviser could upload.
 - Never promise, imply or estimate guaranteed returns. Past performance is not indicative of future results.
 - The plan's allocation and fund shortlist come from deterministic suitability and screening engines. You may explain them; you must not recommend overriding suitability rules.
 
@@ -181,8 +197,9 @@ const inr = (x) => '₹' + Math.round(x).toLocaleString('en-IN');
 function caseSummary(d) {
   const c = d.client, r = d.risk;
   const lines = [
-    `Client: ${c.name}, age ${c.age}${c.location ? `, ${c.location}` : ''}. Monthly income ${inr(r.financials.income)}, expenses ${inr(r.financials.expenses)}, EMIs ${inr(r.financials.emi)}, surplus ${inr(r.financials.surplus)}. Emergency cover ${r.financials.emergencyMonths.toFixed(1)} months. Dependants ${c.dependants || 0}.`,
+    `Client: ${c.name}, age ${c.age}${c.location ? `, ${c.location}` : ''}${c.employmentStatus ? `, ${c.employmentStatus.replace('_', ' ')}` : ''}. Monthly income ${inr(r.financials.income)}, expenses ${inr(r.financials.expenses)}, EMIs ${inr(r.financials.emi)}, surplus ${inr(r.financials.surplus)}. Emergency cover ${r.financials.emergencyMonths.toFixed(1)} months. Dependants ${c.dependants || 0}.`,
     `Risk: capacity ${r.capacity.level} (${r.capacity.score}/100), tolerance ${r.tolerance.level} (${r.tolerance.score}/15), proposed ${r.final.level}. ${r.reasons.join(' ')}`,
+    ...(d.plan.investRange ? [`Recommended investment (worked out by the co-pilot from the finances): ${investRangeText(d.plan.investRange)}. ${d.plan.investRange.basis.join(' ')}`] : []),
     `Total recommended SIP ${inr(d.plan.totalSip)} per month. Starting mix: ${Object.entries(d.plan.combinedAllocation).map(([k, v]) => `${SLEEVES[k].label} ${v}%`).join(', ')}.`,
     ...d.plan.goals.map((g) => `Goal "${g.name}" (${g.typeLabel}, ${g.years} years): future cost ${inr(g.futureCost)}, recommended SIP ${inr(g.recommendedSip)}, starting equity ${g.currentAllocation.equity}%, chance of reaching target ${(g.monteCarlo.successProb * 100).toFixed(0)}%, SIP for 80% confidence ${inr(g.monteCarlo.sipFor[80])}. De-risking: ${g.derisk.phases.map((p) => `${p.label} years ${p.from}–${p.to}`).join('; ')}.`),
     ...d.funds.map((s) => `Sleeve ${s.label} (${s.weight}%): ${s.selected ? `${s.selected.name}${s.overridden ? ' (adviser override)' : ''}. ${s.selected.explanation ?? ''}` : 'no eligible fund'}${s.eligible.length > 1 ? ` Other eligible: ${s.eligible.filter((f) => f.code !== s.selected?.code).map((f) => f.name).join(', ')}.` : ''}`),

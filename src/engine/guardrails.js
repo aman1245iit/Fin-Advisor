@@ -4,6 +4,8 @@
 //   low    → informational
 // No output reaches the client until an adviser approves the draft (enforced server-side).
 
+import { WITHDRAWAL_RATE, WITHDRAWAL_BUCKET_YEARS } from './planner.js';
+
 const GUARANTEE_PATTERNS = [
   /guarantee/i, /assured\s+return/i, /fixed\s+return/i, /sure[\s-]?shot/i, /risk[\s-]?free\s+(return|profit)/i,
   /no\s+risk/i, /double\s+(my|the)\s+money/i, /(\d{2,3})\s*%\s*(return|returns)?\s*(every|each|per|a)\s*(year|annum|month)/i,
@@ -63,13 +65,32 @@ export function runGuardrails({ client, risk, plan, funds }) {
   }
 
   // Affordability & liquidity.
-  if (fin.surplus <= 0) add('high', 'NO_SURPLUS', `Monthly expenses and EMIs (${inr(fin.outgo)}) use all income (${inr(fin.income)}). No investment plan is affordable until cash flow is fixed.`, 'Cash flow');
+  const range = plan.investRange;
+  const w = range?.withdrawals;
+  if (fin.surplus <= 0 && fin.nonEarning && w && w.corpus > 0) {
+    // Retired / non-earning: living costs come out of savings, so test how fast they are drawn down.
+    const ratePct = `${(w.rate * 100).toFixed(1)}%`;
+    const msg = `Income leaves ${inr(w.monthly)} a month of expenses uncovered, i.e. ${inr(w.annual)} a year drawn from ${inr(w.corpus)} of investable savings (${ratePct} a year; savings last about ${Number.isFinite(w.yearsCovered) ? w.yearsCovered.toFixed(0) : 'many'} years before growth).`;
+    if (w.rate > WITHDRAWAL_RATE.high) add('high', 'WITHDRAWAL_RATE_HIGH', `${msg} Above ${WITHDRAWAL_RATE.high * 100}% a year the savings may run out: cut expenses, add income (e.g. annuity, rent) or keep more in safer assets.`, 'Cash flow');
+    else if (w.rate > WITHDRAWAL_RATE.caution) add('medium', 'WITHDRAWAL_RATE_ELEVATED', `${msg} Above ${WITHDRAWAL_RATE.caution * 100}% a year needs a yearly review of withdrawals.`, 'Cash flow');
+    else add('low', 'SWP_FROM_SAVINGS', `${msg} This is a sustainable rate; set up a monthly SWP from the liquid bucket.`, 'Cash flow');
+    if (plan.totalSip > 0) {
+      const short = range.lumpSum.needed > w.forGoals;
+      add(short ? 'high' : 'medium', 'GOALS_FROM_SAVINGS', `There is no monthly surplus for SIPs. The goals need about ${inr(range.lumpSum.needed)} invested today instead; ${inr(w.forGoals)} of investable savings remains after keeping ${WITHDRAWAL_BUCKET_YEARS} years of withdrawals aside.${short ? ' Goals need to be re-prioritised, extended or reduced.' : ' Earmark that amount as savings for the goals (goal table), which removes the SIP.'}`, 'Cash flow');
+    }
+  } else if (fin.surplus <= 0) add('high', 'NO_SURPLUS', `Monthly expenses and EMIs (${inr(fin.outgo)}) use all income (${inr(fin.income)})${fin.nonEarning ? ' and there are no savings to draw on' : ''}. No investment plan is affordable until cash flow is fixed.`, 'Cash flow');
   else if (plan.totalSip > fin.surplus) add('high', 'SIP_EXCEEDS_SURPLUS', `Required SIPs total ${inr(plan.totalSip)} a month but the monthly surplus is only ${inr(fin.surplus)}. Goals need to be re-prioritised, extended or reduced.`, 'Cash flow');
-  else if (plan.budget && plan.totalSip > plan.budget) add('medium', 'SIP_EXCEEDS_BUDGET', `Required SIPs (${inr(plan.totalSip)}) exceed the client's stated monthly investment amount (${inr(plan.budget)}).`, 'Cash flow');
-  if (fin.emergencyMonths < 6) add(fin.emergencyMonths < 3 ? 'high' : 'medium', 'EMERGENCY_FUND_SHORT', `Emergency savings cover ${fin.emergencyMonths.toFixed(1)} months of outgo; 6 months (${inr(fin.outgo * 6)}) is recommended in a liquid fund before long-term investing.`, 'Liquidity');
+  else if (range && plan.totalSip > range.monthly.affordHigh) add('medium', 'SIP_ABOVE_COMFORT', `Required SIPs (${inr(plan.totalSip)}) are more than ${Math.round(range.monthly.share[1] * 100)}% of the monthly surplus (${inr(range.monthly.affordHigh)}), leaving little buffer for irregular spending.`, 'Cash flow');
+  const target = fin.emergencyTargetMonths ?? 6;
+  if (fin.emergencyMonths < target) {
+    const topUp = range?.lumpSum.emergencyTopUp ? ` ${inr(range.lumpSum.emergencyTopUp)} of the uninvested savings is set aside for it.` : '';
+    const covered = range && range.lumpSum.emergencyTopUp > 0 && range.lumpSum.emergencyShort <= 0;
+    add(covered ? 'low' : fin.emergencyMonths < 3 ? 'high' : 'medium', 'EMERGENCY_FUND_SHORT', `Emergency savings cover ${fin.emergencyMonths.toFixed(1)} months of outgo; ${target} months (${inr(fin.outgo * target)}) is recommended in a liquid fund before long-term investing.${topUp}`, 'Liquidity');
+  }
   if (fin.emiRatio > 0.4) add('high', 'HIGH_DEBT_BURDEN', `EMIs are ${(fin.emiRatio * 100).toFixed(0)}% of income. Consider debt reduction before adding market risk.`, 'Liabilities');
   const allocatedSavings = (client.goals || []).reduce((s, g) => s + (+g.existingSavings || 0), 0);
-  if (allocatedSavings > (+client.existingInvestments || 0) + 1) add('medium', 'SAVINGS_OVER_ALLOCATED', `Savings earmarked to goals (${inr(allocatedSavings)}) exceed total existing investments (${inr(+client.existingInvestments || 0)}).`, 'Planning');
+  const investable = (+client.existingInvestments || 0) + fin.savingsToInvest;
+  if (allocatedSavings > investable + 1) add('medium', 'SAVINGS_OVER_ALLOCATED', `Savings earmarked to goals (${inr(allocatedSavings)}) exceed existing investments plus savings available to invest (${inr(investable)}).`, 'Planning');
   if ((+client.dependants || 0) > 0 && client.hasLifeCover === 'no') add('medium', 'NO_LIFE_COVER', `Client has ${client.dependants} dependant(s) but no term life cover. Protection should come before investment.`, 'Protection');
   if (client.hasHealthCover === 'no') add('medium', 'NO_HEALTH_COVER', 'No health insurance recorded. Medical costs could force early redemption of investments.', 'Protection');
 

@@ -5,7 +5,7 @@ A working co-pilot for a SEBI-registered Investment Adviser (RIA). The adviser e
 ```
 npm install
 npm start            # http://localhost:4400
-npm test             # 36 tests: engines, glide path, Monte Carlo, options, guardrails, research, AI assistant, workflow
+npm test             # 44 tests: engines, glide path, Monte Carlo, options, guardrails, research, AI assistant, workflow
 ```
 
 Optional: put a free key in `.env` as `FREE_AI_API_KEY` (Groq `gsk_…`, Google Gemini `AIza…` or OpenRouter `sk-or-…`; see `.env.example`) or set `ANTHROPIC_API_KEY` to turn on the **AI research & planning agent**. Claude is used when both are set. The Research screen needs one of these keys: every question is answered by the AI agent. Every figure comes from the engines, the documents or official SEBI-regulated sources (see *Integration principle*).
@@ -22,9 +22,9 @@ Client profile submitted → Risk & suitability checks → Goal-based plan → F
 
 | Screen | What it shows |
 |---|---|
-| 1 Client onboarding | One form: finances, liabilities, dependants, behaviour questionnaire, product requests, goals. No preloaded clients: every case starts from a blank profile. |
+| 1 Client onboarding | One form: employment status (incl. retired / not earning), finances, savings not yet invested, liabilities, dependants, behaviour questionnaire, product requests, goals. The client is **not** asked how much to invest; the co-pilot works that out. No preloaded clients: every case starts from a blank profile. |
 | 2 Risk profile | Capacity vs tolerance scores, factor tables, conflict-resolution matrix, conflicts requiring review. |
-| 3 Financial planning | Future cost, SIP (effective, nominal, glide-path), chance of reaching each goal and SIP for 80% confidence, allocation, **four "where to invest" options**, glide path, de-risking schedule with ₹ switch amounts, Monte Carlo goal projection. |
+| 3 Financial planning | **How much to invest** (monthly and lump-sum range, SWP for retirees), future cost, SIP (effective, nominal, glide-path), chance of reaching each goal and SIP for 80% confidence, allocation, **four "where to invest" options**, glide path, de-risking schedule with ₹ switch amounts, Monte Carlo goal projection. |
 | 4 Fund research | Selection criteria, shortlist per sleeve with reasons, excluded funds, performance, 10-year backtest vs benchmarks. |
 | 5 Research & documents | AI research agent (library, engines and official SEBI-regulated sources) with cited answers, comparisons and follow-ups; document library with full-text search, page viewer, PDF upload. |
 | 6 Adviser review | Full draft, warnings, calculations, sources, disclosures; **Approve / Reject / Request changes / Edit and resubmit**; version history with field-level change log; audit trail; client report link (HTTP 403 until approved). |
@@ -41,7 +41,9 @@ Client profile submitted → Risk & suitability checks → Goal-based plan → F
 | Emergency savings, months of outgo | ≤1: 0 · ≤3: 3 · ≤6: 6 · more: 10 |
 | EMI burden, % of income | 0: 10 · ≤10%: 8 · ≤30%: 5 · ≤50%: 2 · more: 0 |
 | Dependants | 0: 10 · 1: 7 · 2: 5 · 3: 3 · 4+: 1 |
-| Income stability | stable 10 · variable 6 · irregular 0 |
+| Income stability | stable 10 · variable 6 · irregular 0 · no regular income 0 |
+
+**Retired / not-earning clients** may enter zero income. For them the monthly-surplus factor is replaced by **savings cover**, the years that existing investments, uninvested savings and emergency money cover the expenses income does not: ≤5y: 0 · ≤10: 3 · ≤20: 6 · more: 10. Their emergency-fund target is 12 months of outgo instead of 6.
 
 Low < 40 ≤ Medium < 70 ≤ High (out of 100). Hard caps: horizon < 3 years → Low; horizon < 5 years or age ≥ 65 → at most Medium.
 
@@ -66,6 +68,11 @@ Patna example (38, ₹1.5 L income, ₹60 k expenses, 22 years, parents, low ris
 4. **Glide:** equity = long-term equity × clamp((years left − 3) ÷ 7). Full equity at 10+ years, a little less each year after that, **0% inside 3 years**. No single-year cliffs.
 5. Liquid share of the non-equity money rises linearly from 0% at 5 years to 100% at 2 years. Gold (5–10%) tapers from 5 years to 0 at 2 years.
 6. Equity split by risk level across large, flexi, mid and small caps. Mid and small caps are folded into large caps for goals under 7 years.
+
+**How much to invest (`investmentRange`):** the adviser does not enter an amount; the co-pilot recommends a range.
+* *Monthly SIP:* at most a share of the monthly surplus, so a buffer remains (stable income 50–80%, variable 40–70%, irregular or none 30–60%). If the goals fit, the range runs from the recommended SIP to the SIP for 80% confidence, capped at the upper share. If they do not, the range is the affordable band and the goals must change.
+* *Lump sum:* savings not yet invested (bank, FDs) first top up the emergency fund to its target; any emergency money above the target is added. The upper end invests all of it; the lower end keeps a further 3 months of outgo in the bank. Equity portions go in by STP over 3–6 months. The one-time amount that would fund all goals today is shown alongside.
+* *Retired / not earning:* expenses that income does not cover are drawn by a monthly SWP. The next 3 years of withdrawals sit in liquid / short-debt funds and are refilled yearly. The withdrawal rate (annual withdrawals ÷ investable savings) is checked: up to 4% sustainable, above 4% medium flag, above 6% high flag.
 
 **De-risking schedule:** every year where the mix changes becomes a switch, with the projected corpus and the ₹ amount to move. Years are grouped into Growth, Transition and Capital-protection phases, with execution notes (redirect SIPs first, STP over 3–6 months, check exit loads and capital-gains tax).
 
@@ -102,9 +109,11 @@ Ranking weights: median rolling 1-year return 30%, max drawdown 20%, TER 20%, vo
 * **Document retrieval (used by the agent's tools):** BM25 over ~700-character chunks with query expansion (e.g. "exit load" also finds "redemption"), boosted to the named fund's pages. It returns structured facts, a **side-by-side comparison** when several funds are named, case-aware "why was this fund chosen" answers, and highlighted passages. Follow-ups ("what about its TER?") reuse the previous question's fund. 
 * **Document library:** 5 built-in official documents (565 pages): PPFAS factsheet (Sep 2026), Nippon India factsheet (Oct 2026), Parag Parikh Flexi Cap SID, Parag Parikh Large Cap SID, SEBI circular SEBI/HO/IMD/DF3/CIR/P/2017/114. It has full-text search with page hits, a page-text viewer, local PDF copies served at `/docs/<file>#page=N`, filters by type, and **PDF upload** (text extracted with pdfjs, indexed immediately, removable). Uploaded documents are stored in `data/docs`, `data/user-docs.json` and `data/user-corpus.json`.
 
+* **Fintel (floating assistant on every page):** for a signed-in adviser, any question that is not about the page itself (funds, SEBI rules, tax, the open client case, what-if plans, or anything else) goes to the same cited research agent, with the case open on screen; answers list their sources. Questions about fields, buttons and sign-in, and all questions from visitors who are not signed in, are answered from a description of the page (typed client data is never sent). If the agent cannot answer, Fintel falls back to a general answer marked as unverified. Tax rules are looked up on incometax.gov.in, which is on the official-sources list.
+
 ## 5. Guardrails & approval (`src/engine/guardrails.js`, `src/server.js`)
 
-* Flags: unsuitable product requests (small-cap only, 100% equity, sectoral), checked against age, horizon, capacity, tolerance, emergency fund and goal purpose; return guarantees; unrealistic return or inflation assumptions; SIP above surplus or budget; thin emergency fund; high EMIs; missing life or health cover; no eligible fund; adviser overrides to excluded funds; AMC concentration.
+* Flags: unsuitable product requests (small-cap only, 100% equity, sectoral), checked against age, horizon, capacity, tolerance, emergency fund and goal purpose; return guarantees; unrealistic return or inflation assumptions; SIP above surplus or above the comfortable share of it; retiree withdrawal rate above 4% / 6%; goals that need a lump sum when there is no surplus; thin emergency fund; high EMIs; missing life or health cover; no eligible fund; adviser overrides to excluded funds; AMC concentration.
 * The co-pilot **does not follow** unsuitable requests. The plan stays on the suitability-based allocation.
 * High-severity flags block approval until each has a written justification (enforced server-side, HTTP 422).
 * Client output is served at `/client/<share token>`: a random link issued when a draft is approved, so reports cannot be found by counting case numbers. It works only while that draft is the latest version; otherwise it returns 403, and each attempt is logged.

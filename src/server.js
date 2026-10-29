@@ -4,12 +4,12 @@ import express from 'express';
 import { db, audit, now, dbRemote, remoteUrl } from './db.js';
 import { runPipeline } from './engine/pipeline.js';
 import { corpusStats, searchDocuments, pageText, addDocument, removeDocument } from './engine/rag.js';
-import { assistantAnswer, llmEnabled, providers } from './engine/assistant.js';
-import { fintelAnswer } from './engine/fintel.js';
+import { assistantAnswer, llmEnabled, providers, freeKeyName } from './engine/assistant.js';
+import { fintelAnswer, isPageHelp } from './engine/fintel.js';
 import { DOC_TYPES, DOCS_DIR } from './engine/sources.js';
 import { allFunds, THRESHOLDS, RANK_WEIGHTS } from './engine/funds.js';
-import { CAPACITY_RULES, CAPACITY_BANDS, TOLERANCE_QUESTIONS, TOLERANCE_BANDS } from './engine/risk.js';
-import { ASSET_ASSUMPTIONS, ASSET_VOLATILITY, GOAL_TYPES, EQUITY_STRESS_FALL, GLIDE_START, GLIDE_END } from './engine/planner.js';
+import { CAPACITY_RULES, CAPACITY_BANDS, TOLERANCE_QUESTIONS, TOLERANCE_BANDS, SAVINGS_COVER_RULE, EMPLOYMENT_STATUS } from './engine/risk.js';
+import { ASSET_ASSUMPTIONS, ASSET_VOLATILITY, GOAL_TYPES, EQUITY_STRESS_FALL, GLIDE_START, GLIDE_END, INVEST_SHARE } from './engine/planner.js';
 import { SPECIAL_REQUESTS } from './engine/guardrails.js';
 import { renderClientReport, renderBlocked } from './client-report.js';
 import { authRouter, authReady, requireAdviser, sessionAdviser } from './auth.js';
@@ -61,13 +61,16 @@ const between = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
 function validateClient(c) {
   const errors = [];
   if (!c || typeof c !== 'object' || Array.isArray(c)) return ['client profile is required'];
-  for (const k of ['name', 'age', 'monthlyIncome', 'monthlyExpenses', 'horizonYears']) if (isBlank(c[k])) errors.push(`${k} is required`);
+  // Retired and non-earning clients may have no income at all; everyone else needs one.
+  const nonEarning = c.employmentStatus === 'retired' || c.employmentStatus === 'not_earning';
+  for (const k of ['name', 'age', ...(nonEarning ? [] : ['monthlyIncome']), 'monthlyExpenses', 'horizonYears']) if (isBlank(c[k])) errors.push(`${k} is required`);
+  if (!isBlank(c.employmentStatus) && !Object.hasOwn(EMPLOYMENT_STATUS, c.employmentStatus)) errors.push(`employmentStatus must be one of ${Object.keys(EMPLOYMENT_STATUS).join(', ')}`);
   if (!isBlank(c.name) && (typeof c.name !== 'string' || !c.name.trim() || c.name.length > 100)) errors.push('name must be text, up to 100 characters');
   if (!isBlank(c.age) && !(Number.isInteger(num(c.age)) && between(num(c.age), 18, 100))) errors.push('age must be a whole number between 18 and 100');
-  if (!isBlank(c.monthlyIncome) && !between(num(c.monthlyIncome), 1, MAX_AMOUNT)) errors.push('monthlyIncome must be a positive amount');
+  if (!isBlank(c.monthlyIncome) && !between(num(c.monthlyIncome), nonEarning ? 0 : 1, MAX_AMOUNT)) errors.push(nonEarning ? 'monthlyIncome must be zero or a positive amount' : 'monthlyIncome must be a positive amount');
   if (!isBlank(c.horizonYears) && !between(num(c.horizonYears), 1, 50)) errors.push('horizonYears must be 1–50');
   // Amounts and counts that may be left blank but cannot be negative or text.
-  for (const k of ['monthlyExpenses', 'monthlyEmi', 'outstandingLoans', 'existingInvestments', 'emergencySavings', 'monthlyInvestable']) {
+  for (const k of ['monthlyExpenses', 'monthlyEmi', 'outstandingLoans', 'existingInvestments', 'emergencySavings', 'savingsToInvest']) {
     if (!isBlank(c[k]) && !between(num(c[k]), 0, MAX_AMOUNT)) errors.push(`${k} must be zero or a positive amount`);
   }
   if (!isBlank(c.dependants) && !(Number.isInteger(num(c.dependants)) && between(num(c.dependants), 0, 20))) errors.push('dependants must be a whole number 0–20');
@@ -129,7 +132,7 @@ async function createDraft(caseId, client, { overrides, adviserNotes, by, change
 // ---------- API ----------
 app.get('/api/meta', (_req, res) => {
   res.json({
-    rules: { CAPACITY_RULES, CAPACITY_BANDS, TOLERANCE_QUESTIONS, TOLERANCE_BANDS, ASSET_ASSUMPTIONS, ASSET_VOLATILITY, GOAL_TYPES, EQUITY_STRESS_FALL, GLIDE_START, GLIDE_END, THRESHOLDS, RANK_WEIGHTS, SPECIAL_REQUESTS },
+    rules: { CAPACITY_RULES, SAVINGS_COVER_RULE, EMPLOYMENT_STATUS, INVEST_SHARE, CAPACITY_BANDS, TOLERANCE_QUESTIONS, TOLERANCE_BANDS, ASSET_ASSUMPTIONS, ASSET_VOLATILITY, GOAL_TYPES, EQUITY_STRESS_FALL, GLIDE_START, GLIDE_END, THRESHOLDS, RANK_WEIGHTS, SPECIAL_REQUESTS },
     corpus: corpusStats(),
     docTypes: DOC_TYPES,
     llm: llmEnabled(),
@@ -138,27 +141,38 @@ app.get('/api/meta', (_req, res) => {
 
 app.get('/api/funds', (_req, res) => res.json(allFunds()));
 
-// Counts for the public front page (no client names). Client cases are private: the count is
-// included only for a signed-in adviser, and left out for visitors.
+// Counts for the public front page (no client names). Client cases are private: the adviser's own
+// case count is included only when signed in, and left out for visitors.
 app.get('/api/public-stats', async (req, res) => {
   const docs = corpusStats().documents ?? [];
+  const adviser = await sessionAdviser(req);
   res.json({
     funds: allFunds().length,
     docs: docs.length,
     pages: docs.reduce((s, d) => s + (d.pages || 0), 0),
-    ...((await sessionAdviser(req)) ? { cases: (await db.get('SELECT COUNT(*) AS n FROM cases')).n } : {}),
+    ...(adviser ? { cases: (await db.get('SELECT COUNT(*) AS n FROM cases WHERE adviser_id = ?', adviser.id)).n } : {}),
   });
 });
 
-app.get('/api/cases', async (_req, res) => {
-  res.json(await db.all('SELECT id, client_name, status, created_at, updated_at FROM cases ORDER BY updated_at DESC'));
+// Each adviser sees only the clients they added. Another adviser's case answers 404, the same as
+// a case that does not exist, so case numbers cannot be probed.
+const ownsCase = async (adviserId, caseId) => Boolean(await db.get('SELECT 1 FROM cases WHERE id = ? AND adviser_id = ?', caseId, adviserId));
+app.use('/api/cases/:id', async (req, res, next) => {
+  try {
+    if (await ownsCase(req.adviser.id, +req.params.id)) return next();
+    res.status(404).json({ error: 'not found' });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/cases', async (req, res) => {
+  res.json(await db.all('SELECT id, client_name, status, created_at, updated_at FROM cases WHERE adviser_id = ? ORDER BY updated_at DESC', req.adviser.id));
 });
 
 app.post('/api/cases', async (req, res) => {
   const client = req.body.client ?? {};
   const errors = validateClient(client);
   if (errors.length) return res.status(400).json({ errors });
-  const r = await db.run('INSERT INTO cases (client_name, client_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', client.name, JSON.stringify(client), 'DRAFT', now(), now());
+  const r = await db.run('INSERT INTO cases (client_name, client_json, status, created_at, updated_at, adviser_id) VALUES (?, ?, ?, ?, ?, ?)', client.name, JSON.stringify(client), 'DRAFT', now(), now(), req.adviser.id);
   const id = r.lastInsertRowid;
   await audit(id, 'CLIENT_PROFILE_SUBMITTED', { by: req.adviser.name, adviserId: req.adviser.id });
   await createDraft(id, client, { by: 'co-pilot' });
@@ -194,6 +208,27 @@ app.put('/api/cases/:id', async (req, res) => {
   res.json(await caseView(id));
 });
 
+// Remove a client: the case, every draft (so client report links stop working), reviews,
+// research and the case's audit trail. One entry without the client's name records the removal.
+// Once any draft has been approved the client has been advised, and SEBI requires the records
+// to be kept, so the case can no longer be deleted.
+app.delete('/api/cases/:id', async (req, res) => {
+  const id = +req.params.id;
+  if (await db.get("SELECT 1 FROM reviews WHERE case_id = ? AND action = 'approve'", id)) {
+    await audit(id, 'CLIENT_DELETE_BLOCKED', { by: req.adviser.name, adviserId: req.adviser.id });
+    return res.status(409).json({ error: 'This client has an approved plan, so their records must be kept and cannot be deleted.' });
+  }
+  await db.batch([
+    ['DELETE FROM reviews WHERE case_id = ?', id],
+    ['DELETE FROM research WHERE case_id = ?', id],
+    ['DELETE FROM drafts WHERE case_id = ?', id],
+    ['DELETE FROM audit WHERE case_id = ?', id],
+    ['DELETE FROM cases WHERE id = ?', id],
+  ]);
+  await audit(null, 'CLIENT_DELETED', { caseId: id, by: req.adviser.name, adviserId: req.adviser.id });
+  res.json({ ok: true });
+});
+
 app.post('/api/cases/:id/review', async (req, res) => {
   const id = +req.params.id;
   const { action, note = '', justifications = {} } = req.body;
@@ -223,11 +258,16 @@ app.post('/api/cases/:id/review', async (req, res) => {
   res.json(await caseView(id));
 });
 
+const AI_SETUP = process.env.VERCEL
+  ? 'Add FREE_AI_API_KEY (or GROQ_API_KEY / ANTHROPIC_API_KEY) in Vercel → Project Settings → Environment Variables for the Production environment, then redeploy: Vercel only applies new variables to new deployments.'
+  : 'Add FREE_AI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server.';
+
 // Research: every question goes to the AI agent (library, engines and official SEBI-regulated sources).
 app.post('/api/research', async (req, res) => {
   const { question, caseId } = req.body;
   if (!question?.trim()) return res.status(400).json({ error: 'question required' });
   let draft = null, contextCodes = [], previous = [];
+  if (caseId && !(await ownsCase(req.adviser.id, +caseId))) return res.status(404).json({ error: 'not found' });
   if (caseId) {
     const row = await latestDraft(+caseId);
     draft = row ? { ...parse(row, 'draft_json'), version: row.version } : null;
@@ -235,7 +275,7 @@ app.post('/api/research', async (req, res) => {
     previous = (await db.all('SELECT question, answer_json FROM research WHERE case_id = ? ORDER BY id DESC LIMIT 6', +caseId)).reverse()
       .map((r) => { const a = JSON.parse(r.answer_json); return { question: r.question, answer: a.answer ?? (a.facts ?? []).map((f) => f.text).join(' '), fundCodes: a.fundCodes ?? [] }; });
   }
-  if (!llmEnabled()) return res.status(503).json({ error: 'The AI agent is not set up. Add FREE_AI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server.' });
+  if (!llmEnabled()) return res.status(503).json({ error: `The AI agent is not set up. ${AI_SETUP}` });
   let a;
   try { a = await assistantAnswer(question, { draft, contextCodes, history: previous }); }
   catch (e) { a = { type: 'not_found', answer: `The AI agent could not finish this question (${e.message}). Please try again.`, facts: [], passages: [], sources: [], steps: [], mode: 'ai-agent' }; }
@@ -244,18 +284,47 @@ app.post('/api/research', async (req, res) => {
   res.json(a);
 });
 
+// The research agent's answer for Fintel, with the open client case (from the page address,
+// e.g. /app.html#/plan/12) when it belongs to this adviser. Null when the agent found no answer.
+async function fintelResearch(question, adviser, page, history) {
+  const caseId = +(String(page?.path ?? '').match(/#\/\w+\/(\d+)/)?.[1] ?? 0);
+  let draft = null;
+  if (caseId && (await ownsCase(adviser.id, caseId))) {
+    const row = await latestDraft(caseId);
+    draft = row ? { ...parse(row, 'draft_json'), version: row.version } : null;
+  }
+  const turns = (Array.isArray(history) ? history : []).filter((m) => typeof m?.content === 'string');
+  const previous = [];
+  for (let i = 0; i + 1 < turns.length; i++) {
+    if (turns[i].role === 'user' && turns[i + 1].role === 'assistant') previous.push({ question: turns[i].content.slice(0, 1000), answer: turns[i + 1].content.slice(0, 2000) });
+  }
+  const a = await assistantAnswer(question, { draft, contextCodes: draft?.funds?.map((f) => f.selected?.code).filter(Boolean) ?? [], history: previous.slice(-3) });
+  if (!a || (a.type !== 'answer' && a.type !== 'guardrail')) return null;
+  if (draft) await audit(caseId, 'RESEARCH_QUESTION', { question, type: a.type, mode: 'fintel' });
+  const sources = (a.sources ?? []).map((x) => `- [${x.id}] ${x.label}`);
+  return { answer: sources.length ? `${a.answer}\n\n**Sources**\n${sources.join('\n')}` : a.answer, sources: a.sources ?? [], mode: 'research' };
+}
+
 // Fintel: form and page help on every page. Visitors get fewer questions than signed-in advisers.
 const FINTEL_WINDOW_MS = 10 * 60_000;
 const fintelHits = new Map();
 app.post('/api/fintel', async (req, res) => {
   const question = String(req.body.question ?? '').trim();
   if (!question) return res.status(400).json({ error: 'Type a question.' });
-  if (!llmEnabled()) return res.status(503).json({ error: 'Fintel is not set up yet. Add FREE_AI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server.' });
+  if (!llmEnabled()) return res.status(503).json({ error: `Fintel is not set up yet. ${AI_SETUP}` });
   const adviser = await sessionAdviser(req);
   const key = adviser ? `a${adviser.id}` : `ip${req.ip}`, max = adviser ? 60 : 15;
   const h = fintelHits.get(key);
   if (!h || Date.now() - h.first >= FINTEL_WINDOW_MS) fintelHits.set(key, { count: 1, first: Date.now() });
   else if (++h.count > max) return res.status(429).json({ error: `You've asked a lot of questions in a short time. Try again in ${Math.ceil((FINTEL_WINDOW_MS - (Date.now() - h.first)) / 60_000)} minute(s).` });
+  // Signed-in advisers can ask anything: questions that are not about the page itself go to the
+  // cited research agent (documents, fund data, the open client case, official SEBI/AMFI sources).
+  if (adviser && !isPageHelp(question)) {
+    try {
+      const a = await fintelResearch(question, adviser, req.body.page, req.body.history);
+      if (a) return res.json(a);
+    } catch (e) { console.warn(`Fintel research agent failed, answering without sources: ${e.message}`); }
+  }
   try { res.json(await fintelAnswer(question, { page: req.body.page, history: req.body.history })); }
   catch (e) { res.status(502).json({ error: `Fintel could not answer just now (${e.message}). Please try again.` }); }
 });
@@ -372,7 +441,7 @@ if (!process.env.VERCEL) {
     console.log(`Adviser co-pilot running at http://localhost:${port}`);
     const ai = providers()[0];
     if (ai) console.log(`AI assistant: ${ai.label}, model ${ai.model}`);
-    else if (process.env.FREE_AI_API_KEY?.trim()) console.warn('AI assistant OFF: FREE_AI_API_KEY is set but its provider is not recognised. Set FREE_AI_PROVIDER, or FREE_AI_BASE_URL and FREE_AI_MODEL, in .env.');
+    else if (freeKeyName()) console.warn(`AI assistant OFF: ${freeKeyName()} is set but its provider is not recognised. Set FREE_AI_PROVIDER, or FREE_AI_BASE_URL and FREE_AI_MODEL, in .env.`);
     else console.log('AI assistant off (no key in .env); research uses document search.');
     console.log(dbRemote ? `Database: hosted (${new URL(remoteUrl).host})` : 'Database: local file');
     console.log(mailConfigured()

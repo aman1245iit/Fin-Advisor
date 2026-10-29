@@ -196,3 +196,19 @@ test('guarantee requests never reach the model', async () => {
   assert.equal(a.type, 'guardrail');
   assert.equal(c.calls.length, 0);
 });
+
+test('the free key is found under the names Vercel integrations use', () => {
+  const saved = { ...process.env };
+  try {
+    for (const k of Object.keys(process.env)) if (/API_KEY$/.test(k)) delete process.env[k];
+    assert.equal(freeConfig(), null);
+    process.env.GROQ_API_KEY = 'gsk_from_integration';
+    assert.equal(freeConfig().label, 'Groq');
+    assert.equal(freeConfig().keyName, 'GROQ_API_KEY');
+    delete process.env.GROQ_API_KEY;
+    process.env.FIN_GEMINI_API_KEY = 'AIza_prefixed';
+    assert.equal(freeConfig().label, 'Google Gemini');
+    process.env.FREE_AI_API_KEY = 'gsk_explicit';
+    assert.equal(freeConfig().keyName, 'FREE_AI_API_KEY', 'FREE_AI_API_KEY wins');
+  } finally { process.env = saved; }
+});

@@ -48,6 +48,8 @@
 .fintel-msg.err { align-self: flex-start; background: transparent; border: 1px solid var(--fx-err); color: var(--fx-err); }
 .fintel-msg p { margin: 0 0 6px; } .fintel-msg p:last-child { margin: 0; }
 .fintel-msg ul, .fintel-msg ol { margin: 4px 0 6px; padding-left: 18px; } .fintel-msg li { margin: 2px 0; }
+.fintel-table { overflow-x: auto; margin: 4px 0 6px; } .fintel-table table { border-collapse: collapse; font-size: 12.5px; }
+.fintel-table th, .fintel-table td { padding: 4px 6px; border-bottom: 1px solid rgba(127, 127, 127, .25); text-align: left; white-space: nowrap; } .fintel-table th { font-weight: 600; }
 .fintel-msg code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(127, 127, 127, .16); padding: 1px 4px; border-radius: 4px; }
 .fintel-about { font-size: 11.5px; color: var(--fx-muted); margin-top: -4px; }
 .fintel-typing { display: inline-flex; gap: 4px; padding: 4px 0; }
@@ -198,9 +200,20 @@
   const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
   function md(text) {
     const out = [];
-    let list = null;
+    let list = null, table = null;
+    const endTable = () => { if (table) { out.push(`<div class="fintel-table"><table>${table.join('')}</table></div>`); table = null; } };
     for (const raw of String(text).split('\n')) {
       const line = raw.trim();
+      // Markdown table rows: the first is the header, the |---| row is skipped.
+      if (/^\|.*\|$/.test(line)) {
+        if (list) { out.push(`</${list}>`); list = null; }
+        if (/^\|[\s:|-]+\|$/.test(line)) continue;
+        const cells = line.slice(1, -1).split('|').map((c) => inline(c.trim()));
+        const tag = table ? 'td' : 'th';
+        (table ??= []).push(`<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join('')}</tr>`);
+        continue;
+      }
+      endTable();
       const bullet = line.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
       if (bullet) {
         const kind = /^\d/.test(line) ? 'ol' : 'ul';
@@ -212,6 +225,7 @@
       if (line) out.push(`<p>${inline(line.replace(/^#{1,6}\s+/, ''))}</p>`);
     }
     if (list) out.push(`</${list}>`);
+    endTable();
     return out.join('');
   }
 
@@ -241,7 +255,9 @@
     log.replaceChildren();
     const hello = document.createElement('div');
     hello.className = 'fintel-msg bot';
-    hello.innerHTML = md("Hi, I'm **Fintel**. Stuck on a field? Click it, then ask me what it means or what to enter.");
+    hello.innerHTML = md(location.pathname.startsWith('/app')
+      ? "Hi, I'm **Fintel**. Ask me anything: funds, SEBI rules, tax, this client's plan, or what to enter in a field (click it first)."
+      : "Hi, I'm **Fintel**. Stuck on a field? Click it, then ask me what it means or what to enter.");
     log.append(hello);
     if (!chat.length) {
       const chips = document.createElement('div');

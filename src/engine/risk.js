@@ -17,8 +17,16 @@ export const CAPACITY_RULES = [
   { key: 'emergencyMonths', label: 'Emergency savings (months of outgo)', bands: [[1, 0], [3, 3], [6, 6], [Infinity, 10]] },
   { key: 'emiRatio', label: 'EMI burden (% of income)', bands: [[0, 10], [0.1, 8], [0.3, 5], [0.5, 2], [Infinity, 0]] },
   { key: 'dependants', label: 'Number of dependants', bands: [[0, 10], [1, 7], [2, 5], [3, 3], [Infinity, 1]] },
-  { key: 'incomeStability', label: 'Income stability', map: { stable: 10, variable: 6, irregular: 0 } },
+  { key: 'incomeStability', label: 'Income stability', map: { stable: 10, variable: 6, irregular: 0, none: 0 } },
 ];
+// Retired and non-earning clients live off their savings, so a monthly surplus says little about
+// them. For them the surplus factor is replaced by how many years their savings cover the
+// expenses that pension or other income does not.
+export const SAVINGS_COVER_RULE = { key: 'savingsCoverYears', label: 'Savings cover (years of expenses not met by income)', bands: [[5, 0], [10, 3], [20, 6], [Infinity, 10]], note: 'Used instead of monthly surplus for retired or non-earning clients.' };
+export const EMPLOYMENT_STATUS = { salaried: 'Salaried', self_employed: 'Self-employed / business', retired: 'Retired', not_earning: 'Not earning (homemaker, between jobs)' };
+export const isNonEarning = (c) => c.employmentStatus === 'retired' || c.employmentStatus === 'not_earning';
+// Months of outgo to keep as an emergency fund: longer for clients without a salary to fall back on.
+export const EMERGENCY_MONTHS = { earning: 6, nonEarning: 12 };
 export const FACTOR_MAX = 10;
 export const CAPACITY_MAX = 100;
 export const CAPACITY_BANDS = { medium: 40, high: 70 }; // Low < 40 ≤ Medium < 70 ≤ High (score out of 100)
@@ -52,11 +60,17 @@ export function deriveFinancials(c) {
   const emi = +c.monthlyEmi || 0;
   const outgo = expenses + emi;
   const surplus = income - outgo;
+  const nonEarning = isNonEarning(c);
+  const savingsToInvest = +c.savingsToInvest || 0;
+  const totalSavings = (+c.existingInvestments || 0) + savingsToInvest + (+c.emergencySavings || 0);
+  const monthlyDraw = Math.max(0, -surplus); // expenses that income does not cover, met from savings
   return {
-    income, expenses, emi, outgo, surplus,
+    income, expenses, emi, outgo, surplus, nonEarning, savingsToInvest, totalSavings, monthlyDraw,
     surplusRatio: income > 0 ? surplus / income : 0,
     emiRatio: income > 0 ? emi / income : 0,
     emergencyMonths: outgo > 0 ? (+c.emergencySavings || 0) / outgo : 0,
+    emergencyTargetMonths: nonEarning ? EMERGENCY_MONTHS.nonEarning : EMERGENCY_MONTHS.earning,
+    savingsCoverYears: monthlyDraw > 0 ? totalSavings / (monthlyDraw * 12) : Infinity,
     debtToAnnualIncome: income > 0 ? (+c.outstandingLoans || 0) / (income * 12) : 0,
   };
 }
@@ -67,14 +81,17 @@ export function assessRisk(client) {
     age: +client.age,
     horizon: +client.horizonYears,
     surplusRatio: fin.surplusRatio,
+    savingsCoverYears: fin.savingsCoverYears,
     emergencyMonths: fin.emergencyMonths,
     emiRatio: fin.emiRatio,
     dependants: +client.dependants || 0,
-    incomeStability: client.incomeStability || 'stable',
+    incomeStability: fin.income > 0 ? client.incomeStability || 'stable' : 'none',
   };
-  const capacityFactors = CAPACITY_RULES.map((r) => {
+  const rules = fin.nonEarning ? CAPACITY_RULES.map((r) => (r.key === 'surplusRatio' ? SAVINGS_COVER_RULE : r)) : CAPACITY_RULES;
+  const capacityFactors = rules.map((r) => {
     const points = band(inputs[r.key], r);
-    return { key: r.key, label: r.label, value: inputs[r.key], points, max: FACTOR_MAX, note: r.note };
+    const value = Number.isFinite(inputs[r.key]) || typeof inputs[r.key] === 'string' ? inputs[r.key] : 'income covers expenses';
+    return { key: r.key, label: r.label, value, points, max: FACTOR_MAX, note: r.note };
   });
   const avgPoints = capacityFactors.reduce((s, f) => s + f.points, 0) / capacityFactors.length;
   const capacityScore = Math.round(avgPoints * (CAPACITY_MAX / FACTOR_MAX) * 10) / 10;

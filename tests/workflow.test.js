@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { senior, patna } from './fixtures.js';
+import { senior, patna, retiree } from './fixtures.js';
 
 const port = 4500 + Math.floor(Math.random() * 400);
 const base = `http://localhost:${port}`;
@@ -202,6 +202,55 @@ test('reject, then edit and resubmit creates a new version with recorded changes
   assert.equal(re.json.history[1].status, 'REJECTED');
 });
 
+test('each adviser sees only the clients they added', async () => {
+  const other = await raw('/api/auth/signup', { name: 'D. Menon', email: 'd.menon@example.com', password: 'isolated-123' }, 'POST', '');
+  assert.equal(other.status, 201);
+  const as = (p, body, method) => raw(p, body, method, other.cookie);
+  const { json: mine } = await call('/api/cases', { client: patna });
+  const { json: theirs } = await as('/api/cases', { client: senior });
+
+  assert.ok((await call('/api/cases')).json.some((c) => c.id === mine.id));
+  assert.ok(!(await call('/api/cases')).json.some((c) => c.id === theirs.id), "other adviser's case not listed");
+  assert.deepEqual((await as('/api/cases')).json.map((c) => c.id), [theirs.id]);
+  assert.equal((await as('/api/public-stats')).json.cases, 1);
+
+  // Every route on someone else's case answers 404, as if it did not exist.
+  assert.equal((await as(`/api/cases/${mine.id}`)).status, 404);
+  assert.equal((await as(`/api/cases/${mine.id}`, { adviserNotes: 'x' }, 'PUT')).status, 404);
+  assert.equal((await as(`/api/cases/${mine.id}/review`, { action: 'reject', note: 'Not my client at all.' })).status, 404);
+  assert.equal((await as(`/api/cases/${mine.id}/research`)).status, 404);
+  assert.equal((await as(`/api/cases/${mine.id}/research`, null, 'DELETE')).status, 404);
+  assert.equal((await as('/api/research', { question: 'What funds?', caseId: mine.id })).status, 404);
+  assert.equal((await call(`/api/cases/${mine.id}`)).json.draft.status, 'PENDING_REVIEW', 'untouched');
+  assert.equal((await as(`/api/cases/${theirs.id}`)).status, 200);
+});
+
+test('an adviser can delete a client and all their data, until a plan is approved', async () => {
+  const { json: v } = await call('/api/cases', { client: patna });
+  await call(`/api/research`, { question: 'What funds?', caseId: v.id });
+  const other = await raw('/api/auth/login', { email: 'd.menon@example.com', password: 'isolated-123' }, 'POST', '');
+  assert.equal((await raw(`/api/cases/${v.id}`, null, 'DELETE', other.cookie)).status, 404, "cannot delete another adviser's client");
+
+  assert.equal((await call(`/api/cases/${v.id}`, null, 'DELETE')).status, 200);
+  assert.equal((await call(`/api/cases/${v.id}`)).status, 404);
+  assert.ok(!(await call('/api/cases')).json.some((c) => c.id === v.id));
+  assert.equal((await call(`/api/cases/${v.id}`, null, 'DELETE')).status, 404);
+
+  // Approved: records must be kept, even after a later version replaces the approved one.
+  const { json: a } = await call('/api/cases', { client: patna });
+  const justifications = Object.fromEntries(a.draft.guardrails.blocking.map((f) => [f, 'Discussed with the client in detail.']));
+  const ok = await call(`/api/cases/${a.id}/review`, { action: 'approve', justifications });
+  assert.equal(ok.status, 200);
+  const blocked = await call(`/api/cases/${a.id}`, null, 'DELETE');
+  assert.equal(blocked.status, 409);
+  assert.match(blocked.json.error, /approved/);
+  assert.equal((await call(`/api/cases/${a.id}`, { adviserNotes: 'Updated after review.' }, 'PUT')).json.draft.status, 'PENDING_REVIEW');
+  assert.equal((await call(`/api/cases/${a.id}`, null, 'DELETE')).status, 409);
+  const kept = await call(`/api/cases/${a.id}`);
+  assert.equal(kept.status, 200);
+  assert.ok(kept.json.audit.some((e) => e.event === 'CLIENT_DELETE_BLOCKED'));
+});
+
 test('invalid profiles are rejected', async () => {
   const r = await call('/api/cases', { client: { ...patna, age: 12, goals: [] } });
   assert.equal(r.status, 400);
@@ -209,7 +258,7 @@ test('invalid profiles are rejected', async () => {
   const goal = patna.goals[0];
   const bad = [
     { age: 'abc' }, { age: 30.5 }, { monthlyIncome: -5 }, { monthlyIncome: 'lots' }, { monthlyExpenses: -1 }, { horizonYears: 0 },
-    { emergencySavings: -100 }, { dependants: 2.5 }, { name: { first: 'x' } }, { name: 'x'.repeat(101) },
+    { emergencySavings: -100 }, { savingsToInvest: -1 }, { monthlyIncome: 0 }, { employmentStatus: 'pirate' }, { dependants: 2.5 }, { name: { first: 'x' } }, { name: 'x'.repeat(101) },
     { goals: [{ ...goal, years: 0.5 }] }, { goals: [{ ...goal, currentCost: 'abc' }] }, { goals: [{ ...goal, existingSavings: -1 }] },
     { goals: Array.from({ length: 11 }, () => goal) },
   ];
@@ -218,6 +267,13 @@ test('invalid profiles are rejected', async () => {
     assert.equal(res.status, 400, JSON.stringify(change).slice(0, 80));
   }
   assert.equal((await call('/api/cases', { client: { ...patna, emergencySavings: '', dependants: '' } })).status, 201, 'optional fields may be blank');
+});
+
+test('a retired client with no income is accepted and gets an investment range', async () => {
+  const r = await call('/api/cases', { client: { ...retiree, monthlyIncome: '' } });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  assert.equal(r.json.draft.plan.investRange.monthly.high, 0);
+  assert.ok(r.json.draft.plan.investRange.lumpSum.high > 0);
 });
 
 test('document library: search, page text, built-in documents cannot be deleted', async () => {

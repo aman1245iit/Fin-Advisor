@@ -122,6 +122,16 @@ export function buildInvestOptions(sl, plan) {
 }
 function screenFlexi() { return screenSleeve('flexicap').selected; }
 
+const inr = (x) => '₹' + Math.round(x).toLocaleString('en-IN');
+export function investRangeText(r) {
+  const parts = [];
+  const span = ({ low, high }) => (low > 0 && low !== high ? `${inr(low)}–${inr(high)}` : low > 0 ? inr(high) : `up to ${inr(high)}`);
+  parts.push(r.monthly.high > 0 ? `${span(r.monthly)} a month` : 'no monthly SIP');
+  if (r.lumpSum.high > 0) parts.push(`${span(r.lumpSum)} as a lump sum`);
+  if (r.withdrawals) parts.push(`monthly withdrawal (SWP) of ${inr(r.withdrawals.monthly)} from savings`);
+  return parts.join(', plus ');
+}
+
 export function runPipeline(client, { overrides = {}, adviserNotes = '' } = {}) {
   const risk = assessRisk(client);
   const plan = buildPlan(client, risk);
@@ -140,7 +150,8 @@ export function runPipeline(client, { overrides = {}, adviserNotes = '' } = {}) 
   const summary = [
     `Risk capacity ${risk.capacity.level} (${risk.capacity.score}/100) and risk tolerance ${risk.tolerance.level} (${risk.tolerance.score}/15) → proposed profile ${risk.final.level}.`,
     ...risk.reasons,
-    `${goals.length} goal(s) need a combined SIP of ₹${Math.round(plan.totalSip).toLocaleString('en-IN')} a month against a monthly surplus of ₹${Math.round(plan.surplus).toLocaleString('en-IN')}.`,
+    `${goals.length} goal(s) need a combined SIP of ${inr(plan.totalSip)} a month against a monthly surplus of ${inr(plan.surplus)}.`,
+    `How much to invest: ${investRangeText(plan.investRange)}.`,
     `Suggested starting mix: ${Object.entries(plan.combinedAllocation).map(([k, v]) => `${SLEEVES[k].label} ${v}%`).join(', ')}.`,
     bt && `10-year backtest of this mix (${bt.period.start} to ${bt.period.end}): CAGR ${(bt.stats.portfolio.cagr * 100).toFixed(1)}%, worst fall ${(bt.stats.portfolio.maxDrawdown * 100).toFixed(1)}% – historical, not a forecast.`,
     `${guard.flags.filter((f) => f.severity === 'high').length} high-severity flag(s) need adviser justification before approval.`,

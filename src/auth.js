@@ -83,7 +83,14 @@ export const authReady = ready.then(() => db.exec(`
     expires_at TEXT NOT NULL,
     used_at TEXT
   );
-`));
+`)).then(() => claimOrphanCases());
+
+// Cases saved while the co-pilot had no sign-in have no adviser, so no one can see them. While
+// there is only one account they can only be that adviser's, so they are given to it; once a
+// second adviser exists they stay hidden rather than be guessed.
+async function claimOrphanCases() {
+  await db.run('UPDATE cases SET adviser_id = (SELECT MIN(id) FROM advisers) WHERE adviser_id IS NULL AND (SELECT COUNT(*) FROM advisers) = 1');
+}
 
 export const adviserCount = async () => (await db.get('SELECT COUNT(*) AS n FROM advisers')).n;
 const byEmail = (email) => db.get('SELECT * FROM advisers WHERE email = ?', normEmail(email));
@@ -96,6 +103,7 @@ export async function createAdviser({ name, email, password }) {
   if (await byEmail(e)) throw httpError(409, 'An adviser with this email already exists.');
   const r = await db.run('INSERT INTO advisers (name, email, password_hash, recovery_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
     n, e, hashSecret(p), '', now(), now());
+  await claimOrphanCases(); // the first account made after sign-in was added
   return publicAdviser(await byId(r.lastInsertRowid));
 }
 

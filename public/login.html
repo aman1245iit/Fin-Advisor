@@ -181,6 +181,8 @@
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || 'Something went wrong. Please try again.');
+      // A new sign-in starts a fresh Fintel chat: the old one may be about another adviser's clients.
+      if (j.adviser) try { sessionStorage.removeItem('fintel-chat'); } catch {}
       return j;
     }
     function bind(form, handler) {

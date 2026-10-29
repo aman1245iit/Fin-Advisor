@@ -61,8 +61,8 @@ function toast(msg, err = false) {
 
 // ---------- Blank profile ----------
 const BASE = {
-  name: '', age: '', location: '', incomeStability: 'stable', monthlyIncome: '', monthlyExpenses: '', monthlyEmi: 0, outstandingLoans: 0,
-  existingInvestments: 0, emergencySavings: 0, dependants: 0, dependantsNote: '', hasLifeCover: 'yes', hasHealthCover: 'yes', monthlyInvestable: '',
+  name: '', age: '', location: '', employmentStatus: 'salaried', incomeStability: 'stable', monthlyIncome: '', monthlyExpenses: '', monthlyEmi: 0, outstandingLoans: 0,
+  existingInvestments: 0, savingsToInvest: 0, emergencySavings: 0, dependants: 0, dependantsNote: '', hasLifeCover: 'yes', hasHealthCover: 'yes',
   horizonYears: '', experience: 'basic', lossReaction: 'hold', fluctuationComfort: 'somewhat_uncomfortable', maxLoss: '20', preferredRisk: 'medium',
   specialRequest: 'none', notes: '', adviserConflicts: '', goals: [],
 };
@@ -84,7 +84,18 @@ function go(screen) { navigate(`#/${screen}${state.view ? `/${state.view.id}` : 
 async function route() {
   const [, screen = 'onboard', id] = location.hash.split('/');
   state.screen = SCREENS.some((s) => s.id === screen) ? screen : 'onboard';
-  if (id && (!state.view || state.view.id !== +id)) await loadCase(+id, false);
+  if (id && (!state.view || state.view.id !== +id)) {
+    // Another adviser's case answers 404, the same as one that does not exist.
+    try { await loadCase(+id, false); }
+    catch (e) {
+      if (e.status !== 404) throw e;
+      state.view = null;
+      if (pref.get('lastCase') === id) pref.set('lastCase', null);
+      toast(`Case #${id} was not found among your clients.`, true);
+      history.replaceState(null, '', '#/onboard');
+      state.screen = 'onboard';
+    }
+  }
   if (!id && state.screen === 'onboard' && state.view && !state.keepCase) state.view = null;
   state.keepCase = false;
   if (state.screen !== 'onboard' && !state.view) state.screen = 'onboard';
@@ -142,6 +153,14 @@ function goalRow(g = {}, i) {
   </tr>`;
 }
 
+// Retired and non-earning clients may have no income: savings and pension are what they live on.
+const NON_EARNING = ['retired', 'not_earning'];
+function incomeField(c) {
+  return NON_EARNING.includes(c.employmentStatus)
+    ? field('Monthly pension, rent & interest (₹, 0 if none)', 'monthlyIncome', c.monthlyIncome)
+    : field('Monthly income (₹)', 'monthlyIncome', c.monthlyIncome, 'number', 'required');
+}
+
 function renderOnboard(el) {
   const c = state.formDraft ?? state.view?.client ?? { ...BASE, goals: [{ name: '', type: 'retirement', currentCost: '', years: '', existingSavings: 0, inflation: 0.06, assumedReturn: 0.1 }] };
   const editing = !!state.view;
@@ -156,18 +175,19 @@ function renderOnboard(el) {
       ${field('Client name', 'name', c.name, 'text', 'required')}
       ${field('Age', 'age', c.age, 'number', 'required')}
       ${field('Location', 'location', c.location, 'text')}
-      ${selectField('Income stability', 'incomeStability', c.incomeStability, [['stable', 'Stable (salaried/pension)'], ['variable', 'Variable (business/bonus)'], ['irregular', 'Irregular']])}
-      ${field('Monthly income (₹)', 'monthlyIncome', c.monthlyIncome, 'number', 'required')}
+      ${selectField('Employment status', 'employmentStatus', c.employmentStatus ?? 'salaried', Object.entries(state.meta.rules.EMPLOYMENT_STATUS ?? { salaried: 'Salaried' }))}
+      ${selectField('Income stability', 'incomeStability', c.incomeStability, [['stable', 'Stable (salary/pension)'], ['variable', 'Variable (business/bonus)'], ['irregular', 'Irregular'], ['none', 'No regular income']])}
+      ${incomeField(c)}
       ${field('Monthly expenses (₹)', 'monthlyExpenses', c.monthlyExpenses, 'number', 'required')}
       ${field('Monthly EMIs (₹)', 'monthlyEmi', c.monthlyEmi)}
       ${field('Outstanding loans & liabilities (₹)', 'outstandingLoans', c.outstandingLoans)}
       ${field('Existing investments (₹)', 'existingInvestments', c.existingInvestments)}
+      ${field('Savings not yet invested – bank, FDs (₹)', 'savingsToInvest', c.savingsToInvest ?? 0)}
       ${field('Emergency savings (₹)', 'emergencySavings', c.emergencySavings)}
       ${field('Number of dependants', 'dependants', c.dependants)}
       ${field('Dependants (who)', 'dependantsNote', c.dependantsNote, 'text', 'placeholder="e.g. Parents"')}
       ${selectField('Term life cover', 'hasLifeCover', c.hasLifeCover, [['yes', 'Yes'], ['no', 'No']])}
       ${selectField('Health insurance', 'hasHealthCover', c.hasHealthCover, [['yes', 'Yes'], ['no', 'No']])}
-      ${field('Investment amount per month (₹)', 'monthlyInvestable', c.monthlyInvestable)}
       ${field('Investment horizon (years)', 'horizonYears', c.horizonYears, 'number', 'required')}
     </div></fieldset></div>
 
@@ -189,10 +209,18 @@ function renderOnboard(el) {
       <span class="hint">Inflation defaults by goal type (education & medical 8%, others 6%) and can be edited. RBI's CPI target is 4% ± 2%.</span></div>
     </fieldset></div>
 
-    <div class="row"><span class="spacer"></span>
+    <div class="row"><span class="hint">No investment amount is needed: after analysing the finances the co-pilot recommends how much to invest each month and as a lump sum.</span><span class="spacer"></span>
+      ${editing ? (state.view.reviews.some((r) => r.action === 'approve')
+        ? '<button type="button" class="btn danger-btn" disabled title="This client has an approved plan, so their records must be kept">Delete client</button>'
+        : '<button type="button" class="btn danger-btn" id="deleteCase" title="Permanently remove this client and all their data">Delete client</button>') : ''}
       <button type="submit" class="btn primary">${editing ? 'Save & resubmit for review' : 'Run co-pilot →'}</button></div>
   </form>`;
 
+  $('[name=employmentStatus]', el).addEventListener('change', (e) => {
+    const lab = $('[name=monthlyIncome]', el).closest('label');
+    lab.outerHTML = incomeField({ ...readForm(), employmentStatus: e.target.value });
+    if (NON_EARNING.includes(e.target.value) && !(+$('[name=monthlyIncome]', el).value > 0)) $('[name=incomeStability]', el).value = 'none';
+  });
   $('#addGoal', el).addEventListener('click', () => {
     state.formDraft = readForm(); state.formDraft.goals.push({ name: '', type: 'other', currentCost: '', years: '', existingSavings: 0, inflation: 0.06, assumedReturn: 0.1 });
     renderOnboard(el);
@@ -206,6 +234,19 @@ function renderOnboard(el) {
     if (e.target.name !== 'g_type') return;
     const infl = state.meta.rules.GOAL_TYPES[e.target.value]?.inflation;
     if (infl != null) e.target.closest('tr').querySelector('[name=g_infl]').value = +(infl * 100).toFixed(2);
+  });
+  $('#deleteCase', el)?.addEventListener('click', async (e) => {
+    const { id, client } = state.view;
+    if (!confirm(`Permanently delete ${client.name} (case #${id})? This removes the profile, every draft and review, the research conversation and the client report link. It cannot be undone.`)) return;
+    e.target.disabled = true;
+    try {
+      await api(`/api/cases/${id}`, { method: 'DELETE' });
+      if (pref.get('lastCase') === String(id)) pref.set('lastCase', null);
+      state.view = null; state.formDraft = null; state.chat = [];
+      await refreshCases();
+      navigate('#/onboard'); route();
+      toast(`${client.name} deleted`);
+    } catch (err) { toast(err.message, true); e.target.disabled = false; }
   });
   $('#clientForm', el).addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -226,7 +267,8 @@ function readForm() {
   const fd = new FormData(f);
   const c = {};
   for (const [k, v] of fd.entries()) if (!k.startsWith('g_')) c[k] = v;
-  for (const k of ['age', 'monthlyIncome', 'monthlyExpenses', 'monthlyEmi', 'outstandingLoans', 'existingInvestments', 'emergencySavings', 'dependants', 'monthlyInvestable', 'horizonYears']) c[k] = c[k] === '' ? '' : +c[k];
+  for (const k of ['age', 'monthlyIncome', 'monthlyExpenses', 'monthlyEmi', 'outstandingLoans', 'existingInvestments', 'savingsToInvest', 'emergencySavings', 'dependants', 'horizonYears']) c[k] = c[k] === '' ? '' : +c[k];
+  if (NON_EARNING.includes(c.employmentStatus) && c.monthlyIncome === '') c.monthlyIncome = 0;
   c.goals = $$('#goalRows tr', f).map((tr) => ({
     name: $('[name=g_name]', tr).value.trim(), type: $('[name=g_type]', tr).value,
     currentCost: +$('[name=g_cost]', tr).value, years: +$('[name=g_years]', tr).value, existingSavings: +$('[name=g_saved]', tr).value || 0,
@@ -294,8 +336,10 @@ function renderRisk(el) {
       <tr><td><b>Total</b></td><td></td><td class="n"><b>${r.tolerance.score}/15 → ${r.tolerance.level}</b></td></tr></tbody></table></div></div>
   </div>
   <div class="card" style="margin-top:16px"><h3>Key financial ratios</h3><div class="grid g4">
-    <div class="kpi"><span class="label">Monthly surplus</span><span class="value">${inrShort(r.financials.surplus)}</span><span class="note">${pct(r.financials.surplusRatio, 0)} of income</span></div>
-    <div class="kpi"><span class="label">Emergency cover</span><span class="value">${r.financials.emergencyMonths.toFixed(1)} mo</span><span class="note">target 6 months</span></div>
+    ${r.financials.monthlyDraw > 0 && r.financials.nonEarning
+      ? `<div class="kpi"><span class="label">Drawn from savings</span><span class="value">${inrShort(r.financials.monthlyDraw)}/mo</span><span class="note">${r.financials.savingsCoverYears != null ? `savings cover ${r.financials.savingsCoverYears.toFixed(1)} years` : ''}</span></div>`
+      : `<div class="kpi"><span class="label">Monthly surplus</span><span class="value">${inrShort(r.financials.surplus)}</span><span class="note">${pct(r.financials.surplusRatio, 0)} of income</span></div>`}
+    <div class="kpi"><span class="label">Emergency cover</span><span class="value">${r.financials.emergencyMonths.toFixed(1)} mo</span><span class="note">target ${r.financials.emergencyTargetMonths ?? 6} months</span></div>
     <div class="kpi"><span class="label">EMI burden</span><span class="value">${pct(r.financials.emiRatio, 0)}</span><span class="note">of income</span></div>
     <div class="kpi"><span class="label">Loans ÷ annual income</span><span class="value">${r.financials.debtToAnnualIncome.toFixed(1)}×</span><span class="note">outstanding</span></div>
   </div></div>`;
@@ -304,7 +348,7 @@ function renderRisk(el) {
 function fmtFactor(f) {
   if (typeof f.value === 'string') return esc(f.value);
   if (f.label.includes('%')) return pct(f.value, 0);
-  if (f.label.includes('months')) return f.value.toFixed(1);
+  if (f.label.includes('months') || f.key === 'savingsCoverYears') return f.value.toFixed(1);
   return f.value;
 }
 function drawMatrix(r) {
@@ -339,7 +383,8 @@ function renderPlan(el) {
   <div class="grid g4">
     <div class="card"><div class="kpi"><span class="label">Total monthly SIP</span><span class="value">${inrShort(p.totalSip)}</span><span class="note">recommended, all goals</span></div></div>
     <div class="card"><div class="kpi"><span class="label">Monthly surplus</span><span class="value">${inrShort(p.surplus)}</span><span class="note">SIP uses ${isFinite(fit) ? pct(fit, 0) : '—'} of it</span></div></div>
-    <div class="card"><div class="kpi"><span class="label">Stated investment amount</span><span class="value">${inrShort(p.budget)}</span><span class="note">${p.budget && p.totalSip > p.budget ? 'below what goals need' : 'covers the plan'}</span></div></div>
+    ${p.investRange ? `<div class="card hero"><div class="kpi"><span class="label">Suggested monthly investment</span><span class="value">${p.investRange.monthly.high > 0 ? rangeShort(p.investRange.monthly) : 'No SIP'}</span><span class="note">${p.investRange.monthly.high > 0 ? 'worked out from the finances' : p.investRange.withdrawals ? 'invest a lump sum, withdraw by SWP' : 'no surplus to invest'}</span></div></div>`
+      : `<div class="card"><div class="kpi"><span class="label">Stated investment amount</span><span class="value">${inrShort(p.budget)}</span><span class="note">older draft</span></div></div>`}
     <div class="card"><div class="kpi"><span class="label">Risk level used</span><span class="value">${d.risk.final.level}</span><span class="note">from screen 2</span></div></div>
   </div>
   <div class="grid g2" style="margin-top:16px">
@@ -354,12 +399,31 @@ Glide         equity = long-term equity × clamp((years left − ${state.meta.ru
       <details><summary>Return and volatility assumptions</summary><table class="data"><thead><tr><th>Asset</th><th class="n">Return</th><th class="n">Volatility</th></tr></thead><tbody>${Object.entries(p.assumptions).filter(([k]) => k !== 'hybrid').map(([k, v]) => `<tr><td><i class="swatch" style="background:${sleeveColor(k)}"></i>${k}</td><td class="n">${pct(v, 2)}</td><td class="n">${pct((p.volatility ?? state.meta.rules.ASSET_VOLATILITY ?? {})[k], 1)}</td></tr>`).join('')}</tbody></table></details>
     </div>
   </div>
+  ${p.investRange ? investRangeHtml(p.investRange) : ''}
   ${opts.length ? optionsHtml(opts) : ''}
   ${p.goals.map((g, i) => goalCard(g, i, opts)).join('')}`;
   drawAlloc('alloc', p.combinedAllocation);
   p.goals.forEach((g, i) => { drawProjection(`proj${i}`, g); drawGlide(`glide${i}`, g); });
   $$('[data-option]', el).forEach((b) => b.addEventListener('click', () => { state.option = b.dataset.option; renderPlan(el); }));
   $$('[data-apply]', el).forEach((b) => b.addEventListener('click', () => applyOption(b.dataset.apply)));
+}
+
+// "1.2L–2L" style range; "up to X" when the low end is zero.
+function rangeShort({ low, high }) { return low > 0 && low !== high ? `${inrShort(low)}–${inrShort(high)}` : low > 0 ? inrShort(high) : `up to ${inrShort(high)}`; }
+function rangeFull({ low, high }) { return low > 0 && low !== high ? `${inr(low)} – ${inr(high)}` : low > 0 ? inr(high) : `up to ${inr(high)}`; }
+
+function investRangeHtml(r) {
+  const w = r.withdrawals;
+  return `<div class="section-title"><h3>How much to invest</h3><span>Recommended by the co-pilot from income, expenses, savings and goals. The client was not asked for an amount.</span></div>
+  <div class="grid ${w ? 'g3' : 'g2'}">
+    <div class="card"><div class="kpi"><span class="label">Every month (SIP)</span><span class="value">${r.monthly.high > 0 ? rangeFull(r.monthly) : 'None'}</span>
+      <span class="note">${r.monthly.high > 0 ? `goals need ${inr(r.monthly.need)} · 80% confidence ${inr(r.monthly.need80)} · affordable ${inr(r.monthly.affordLow)}–${inr(r.monthly.affordHigh)}` : 'income does not leave a monthly surplus'}</span></div></div>
+    <div class="card"><div class="kpi"><span class="label">One-time (lump sum)</span><span class="value">${r.lumpSum.high > 0 ? rangeFull(r.lumpSum) : 'None'}</span>
+      <span class="note">${r.lumpSum.high > 0 ? `from savings not yet invested, after the ${inr(r.lumpSum.emergencyTarget)} emergency fund` : 'no uninvested savings beyond the emergency fund'}</span></div></div>
+    ${w ? `<div class="card"><div class="kpi"><span class="label">Monthly withdrawal (SWP)</span><span class="value ${w.rate > 0.06 ? 'crit' : w.rate > 0.04 ? 'warn' : 'good'}">${inr(w.monthly)}</span>
+      <span class="note">${isFinite(w.rate) ? pct(w.rate, 1) : '—'} a year of ${inrShort(w.corpus)} investable savings · ${inrShort(w.bucket)} kept in liquid funds</span></div></div>` : ''}
+  </div>
+  <div class="card" style="margin-top:16px"><h3>How the range was worked out</h3><ul>${r.basis.map((b) => `<li>${esc(b)}</li>`).join('')}</ul></div>`;
 }
 
 function optionsHtml(opts) {
@@ -807,6 +871,7 @@ function renderReview(el) {
       <div class="table-wrap"><table class="data"><thead><tr><th>Goal</th><th class="n">Future cost</th><th class="n">SIP</th><th>Starting mix</th></tr></thead><tbody>
       ${d.plan.goals.map((g) => `<tr><td>${esc(g.name)}<div class="small muted">${g.years} yrs</div></td><td class="n">${inrShort(g.futureCost)}</td><td class="n">${inr(g.recommendedSip)}</td><td class="small">${Object.entries(g.currentAllocation.weights).map(([k, w]) => `${k} ${w}%`).join(', ')}</td></tr>`).join('')}
       <tr><td><b>Total</b></td><td></td><td class="n"><b>${inr(d.plan.totalSip)}</b></td><td></td></tr></tbody></table></div>
+      ${d.plan.investRange ? `<p class="small" style="margin-top:10px"><b>Recommended investment:</b> ${d.plan.investRange.monthly.high > 0 ? `${rangeFull(d.plan.investRange.monthly)} a month` : 'no monthly SIP'}${d.plan.investRange.lumpSum.high > 0 ? ` · lump sum ${rangeFull(d.plan.investRange.lumpSum)}` : ''}${d.plan.investRange.withdrawals ? ` · SWP ${inr(d.plan.investRange.withdrawals.monthly)}/month from savings` : ''}</p>` : ''}
       <h3 style="margin-top:14px">Funds</h3><ul class="small">${d.funds.map((f) => `<li>${esc(f.label)} (${f.weight}%): <b>${esc(f.selected?.name ?? 'none')}</b>${f.overridden ? ' · adviser override' : ''}</li>`).join('')}</ul>
     </div>
     <div class="card"><h3>Warnings & guardrails</h3><p class="sub">${high.length} high · ${d.guardrails.flags.filter((f) => f.severity === 'medium').length} medium · ${d.guardrails.flags.filter((f) => f.severity === 'low').length} low</p>
@@ -961,6 +1026,8 @@ function openSettings() {
   $('[data-close]', dlg).addEventListener('click', () => dlg.close());
   $('#signOut', dlg).addEventListener('click', async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
+    // Fintel's chat can mention this adviser's clients; the next person on this browser must not see it.
+    try { sessionStorage.removeItem('fintel-chat'); } catch {}
     location.replace('/');
   });
   dlg.showModal();

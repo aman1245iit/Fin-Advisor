@@ -2,7 +2,7 @@
 //
 // The agent may search and read pages only on the domains below: the regulator (SEBI), the
 // industry body (AMFI), the RBI, the stock exchanges and depositories, and the websites of
-// SEBI-registered mutual fund AMCs. Every URL is checked before it is fetched and again after
+// SEBI-registered mutual fund AMCs, plus the Income Tax Department for tax rules. Every URL is checked before it is fetched and again after
 // redirects; anything else is refused. PDFs are converted to page text with pdf.js.
 export const OFFICIAL_DOMAINS = {
   'sebi.gov.in': 'SEBI',
@@ -12,6 +12,7 @@ export const OFFICIAL_DOMAINS = {
   'bseindia.com': 'BSE',
   'nsdl.co.in': 'NSDL',
   'cdslindia.com': 'CDSL',
+  'incometax.gov.in': 'Income Tax Department',
   // SEBI-registered mutual fund AMCs
   'ppfas.com': 'PPFAS Mutual Fund',
   'nipponindiaim.com': 'Nippon India Mutual Fund',

@@ -28,6 +28,18 @@ export function renderBlocked(status) {
   <p class="muted">Every attempt to open this page before approval is recorded in the audit log.</p></div>`);
 }
 
+const span = ({ low, high }) => (low > 0 && low !== high ? `${inr(low)} – ${inr(high)}` : low > 0 ? inr(high) : `up to ${inr(high)}`);
+function investRangeHtml(r) {
+  const rows = [
+    r.monthly.high > 0 && `<tr><td>Every month (SIP)</td><td class="n"><b>${span(r.monthly)}</b></td></tr>`,
+    r.lumpSum.high > 0 && `<tr><td>One-time, from savings not yet invested</td><td class="n"><b>${span(r.lumpSum)}</b></td></tr>`,
+    r.withdrawals && `<tr><td>Monthly withdrawal from your investments (SWP)</td><td class="n"><b>${inr(r.withdrawals.monthly)}</b></td></tr>`,
+  ].filter(Boolean);
+  if (!rows.length) return '';
+  return `<h2>How much to invest</h2><div class="card"><table>${rows.join('')}</table>
+  <ul class="muted">${r.basis.map((b) => `<li>${esc(b)}</li>`).join('')}</ul></div>`;
+}
+
 export function renderClientReport(d, { version, adviser, approvedAt }) {
   const c = d.client;
   const goals = d.plan.goals.map((g) => `
@@ -45,7 +57,8 @@ export function renderClientReport(d, { version, adviser, approvedAt }) {
   <div class="card"><p>Ability to take risk: <b>${esc(d.risk.capacity.level)}</b> · Comfort with risk: <b>${esc(d.risk.tolerance.level)}</b> · Plan follows: <b>${esc(d.risk.final.level)}</b></p>
   <p class="muted">${d.risk.reasons.map(esc).join(' ')}</p></div>
   <h2>Your goals and monthly investments</h2>${goals}
-  <div class="card"><b>Total monthly investment: ${inr(d.plan.totalSip)}</b></div>
+  <div class="card"><b>Total monthly investment for your goals: ${inr(d.plan.totalSip)}</b></div>
+  ${d.plan.investRange ? investRangeHtml(d.plan.investRange) : ''}
   ${d.adviserNotes ? `<h2>Note from your adviser</h2><div class="card">${esc(d.adviserNotes)}</div>` : ''}
   <h2>Important</h2><div class="card"><p class="warn">${esc(d.disclosures.returns)}</p><ul>${[...d.disclosures.general.slice(0, 2), ...d.disclosures.conflicts].map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`);
 }

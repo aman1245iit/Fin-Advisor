@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { _setClient } from '../src/engine/assistant.js';
-import { fintelAnswer, pageContext } from '../src/engine/fintel.js';
+import { fintelAnswer, pageContext, isPageHelp } from '../src/engine/fintel.js';
 
 process.env.ANTHROPIC_API_KEY ||= 'test-key';
 
@@ -38,4 +38,9 @@ test('fintel answers guarantee requests with the fixed compliance text', async (
   _setClient({ beta: { messages: { create: async () => { throw new Error('model should not be called'); } } } });
   const r = await fintelAnswer('Which fund gives guaranteed returns?');
   assert.equal(r.guardrail, true);
+});
+
+test('page questions stay with page help; everything else goes to the research agent', () => {
+  for (const q of ['What should I enter in monthly expenses?', 'What does this field mean?', 'How do I create an account?', 'Which fields are required?', 'Explain the Risk profile screen']) assert.ok(isPageHelp(q), q);
+  for (const q of ['What is the expense ratio of Parag Parikh Flexi Cap?', 'Explain LTCG tax on equity mutual funds', 'Why was this fund chosen for the client?', 'How much should this client invest every month?']) assert.ok(!isPageHelp(q), q);
 });
