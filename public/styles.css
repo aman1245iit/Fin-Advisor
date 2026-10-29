@@ -212,6 +212,10 @@ table.data td.n, table.data th.n { text-align: right; font-variant-numeric: tabu
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button { border: 1px dashed var(--rule); background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; color: var(--ink-2); }
 .chips button:hover { border-color: var(--teal); color: var(--teal); }
+.personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.personas button { display: flex; flex-direction: column; gap: 2px; text-align: left; border: 1px dashed var(--rule); background: transparent; border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink-2); }
+.personas button b { color: var(--ink); font-size: 13px; }
+.personas button:hover { border-style: solid; border-color: var(--teal); background: var(--teal-soft); }
 
 details > summary { cursor: pointer; color: var(--teal); font-weight: 500; }
 details[open] > summary { margin-bottom: 8px; }

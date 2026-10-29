@@ -66,6 +66,38 @@ const BASE = {
   horizonYears: '', experience: 'basic', lossReaction: 'hold', fluctuationComfort: 'somewhat_uncomfortable', maxLoss: '20', preferredRisk: 'medium',
   specialRequest: 'none', notes: '', adviserConflicts: '', goals: [],
 };
+// Reference test personas shown on the New client screen for every adviser. Picking one only fills the form.
+const goal = (name, type, currentCost, years, existingSavings, inflation, assumedReturn) => ({ name, type, currentCost, years, existingSavings, inflation, assumedReturn });
+const PERSONAS = [
+  { label: 'Fresh graduate, Bengaluru', situation: '₹55k/month take-home; no dependants', test: 'Emergency fund, then long-term wealth', client: {
+    ...BASE, name: 'Ananya Rao', age: 23, location: 'Bengaluru', monthlyIncome: 55000, monthlyExpenses: 32000, savingsToInvest: 40000, emergencySavings: 20000,
+    horizonYears: 30, experience: 'none', goals: [goal('Emergency fund', 'emergency', 200000, 1, 20000, 0.06, 0.065), goal('Long-term wealth', 'wealth', 10000000, 25, 0, 0.06, 0.12)] } },
+  { label: 'Young couple, Pune', situation: 'Dual income; home-loan EMI', test: "Child's education in 15 years", client: {
+    ...BASE, name: 'Rahul & Sneha Kulkarni', age: 31, location: 'Pune', monthlyIncome: 210000, monthlyExpenses: 80000, monthlyEmi: 45000, outstandingLoans: 4500000,
+    existingInvestments: 600000, savingsToInvest: 200000, emergencySavings: 400000, dependants: 1, dependantsNote: 'Child (2 years)', horizonYears: 15,
+    experience: 'moderate', fluctuationComfort: 'comfortable', goals: [goal("Child's higher education", 'education', 2500000, 15, 100000, 0.08, 0.11)] } },
+  { label: 'Small business owner, Surat', situation: 'Irregular income; high cash holdings', test: 'Retirement at 58', client: {
+    ...BASE, name: 'Mahesh Patel', age: 44, location: 'Surat', employmentStatus: 'self_employed', incomeStability: 'irregular', monthlyIncome: 250000, monthlyExpenses: 120000,
+    existingInvestments: 1500000, savingsToInvest: 3000000, emergencySavings: 1500000, dependants: 3, dependantsNote: 'Spouse and two children', horizonYears: 14,
+    lossReaction: 'sell_some', notes: 'Keeps most surplus as cash in the current account; income varies a lot month to month.',
+    goals: [goal('Retirement at 58', 'retirement', 30000000, 14, 1500000, 0.06, 0.10)] } },
+  { label: 'Doctor, Patna', situation: 'High income; under-invested; risk-averse', test: "Retirement + parents' medical corpus", client: {
+    ...BASE, name: 'Dr. Rohit Kumar', age: 38, location: 'Patna', monthlyIncome: 300000, monthlyExpenses: 90000, existingInvestments: 800000, savingsToInvest: 2500000,
+    emergencySavings: 600000, dependants: 2, dependantsNote: 'Parents', horizonYears: 22, lossReaction: 'sell_some', fluctuationComfort: 'very_uncomfortable', maxLoss: '10',
+    preferredRisk: 'low', notes: 'Most savings sit in the bank and FDs; worried about market falls.',
+    goals: [goal('Retirement', 'retirement', 30000000, 22, 500000, 0.06, 0.09), goal("Parents' medical corpus", 'medical', 1500000, 5, 200000, 0.08, 0.08)] } },
+  { label: 'Retiree, Chennai', situation: '₹80 lakh corpus; pension', test: 'Monthly income for 25 years', client: {
+    ...BASE, name: 'S. Venkataraman', age: 68, location: 'Chennai', employmentStatus: 'retired', monthlyIncome: 40000, monthlyExpenses: 70000, existingInvestments: 7000000,
+    savingsToInvest: 1000000, emergencySavings: 500000, dependants: 1, dependantsNote: 'Spouse', horizonYears: 25, experience: 'moderate', lossReaction: 'sell_some',
+    maxLoss: '10', preferredRisk: 'low', notes: 'Needs a steady monthly income for the next 25 years from the ₹80 lakh corpus and pension.',
+    goals: [goal('Health & medical reserve', 'medical', 1000000, 5, 500000, 0.08, 0.08)] } },
+  { label: 'Aggressive trader, Mumbai', situation: 'F&O; losses; wants "high returns fast"', test: 'Co-pilot must handle suitability', client: {
+    ...BASE, name: 'Karan Shah', age: 29, location: 'Mumbai', monthlyIncome: 120000, monthlyExpenses: 55000, monthlyEmi: 15000, outstandingLoans: 400000,
+    existingInvestments: 300000, savingsToInvest: 100000, emergencySavings: 30000, horizonYears: 3, experience: 'extensive', lossReaction: 'buy_more',
+    fluctuationComfort: 'very_comfortable', maxLoss: '30', preferredRisk: 'high', specialRequest: 'smallcap_only',
+    notes: 'Trades F&O and lost about ₹4 lakh last year. Wants high returns fast: 40%+ a year, money doubled in 2 years.',
+    goals: [goal('Double the money', 'wealth', 1000000, 2, 300000, 0.06, 0.25)] } },
+];
 // ---------- Navigation ----------
 function renderSteps() {
   const has = !!state.view;
@@ -169,7 +201,9 @@ function renderOnboard(el) {
     <div><h2>${editing ? `Edit client – case #${state.view.id}` : 'New client'}</h2>
     <p>Enter the client once. Every module (risk, planning, funds, research and review) reads from this single profile. ${editing ? 'Saving creates a new draft version for review.' : ''}</p></div>
   </div>
-  ${editing ? `<div class="card" style="margin-bottom:16px">${pipelineHtml()}</div>` : ''}
+  ${editing ? `<div class="card" style="margin-bottom:16px">${pipelineHtml()}</div>` : `<div class="card" style="margin-bottom:16px"><h3>Sample test personas</h3>
+    <p class="sub">Reference cases for every adviser. Pick one to fill the form; nothing is saved until you run the co-pilot.</p>
+    <div class="personas">${PERSONAS.map((p, i) => `<button type="button" data-persona="${i}"><b>${esc(p.label)} · ${p.client.age}</b><span>${esc(p.situation)}</span><span class="muted">Goal / test: ${esc(p.test)}</span></button>`).join('')}</div></div>`}
   <form id="clientForm" class="grid" novalidate>
     <div class="card"><fieldset><legend>Client & financial information</legend><div class="fields">
       ${field('Client name', 'name', c.name, 'text', 'required')}
@@ -221,6 +255,11 @@ function renderOnboard(el) {
     lab.outerHTML = incomeField({ ...readForm(), employmentStatus: e.target.value });
     if (NON_EARNING.includes(e.target.value) && !(+$('[name=monthlyIncome]', el).value > 0)) $('[name=incomeStability]', el).value = 'none';
   });
+  $$('[data-persona]', el).forEach((b) => b.addEventListener('click', () => {
+    state.formDraft = structuredClone(PERSONAS[+b.dataset.persona].client);
+    renderOnboard(el);
+    $('#clientForm', el).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
   $('#addGoal', el).addEventListener('click', () => {
     state.formDraft = readForm(); state.formDraft.goals.push({ name: '', type: 'other', currentCost: '', years: '', existingSavings: 0, inflation: 0.06, assumedReturn: 0.1 });
     renderOnboard(el);
