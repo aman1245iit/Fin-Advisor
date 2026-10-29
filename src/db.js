@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
-const dataDir = path.resolve(import.meta.dirname, '..', 'data');
+// On Vercel the deployed code is read-only; only /tmp is writable (and it is wiped between instances).
+const dataDir = process.env.VERCEL ? '/tmp' : path.resolve(import.meta.dirname, '..', 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 export const db = new DatabaseSync(process.env.DB_PATH ?? path.join(dataDir, 'copilot.db'));
 

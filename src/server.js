@@ -363,8 +363,11 @@ app.use((err, req, res, _next) => {
   res.status(500).sendFile(path.join(PUBLIC_DIR, '500.html'));
 });
 
+// On Vercel the platform runs the exported app as a function; locally it listens on PORT.
+export default app;
+
 const port = +process.env.PORT || 4400;
-app.listen(port, () => {
+if (!process.env.VERCEL) app.listen(port, () => {
   console.log(`Adviser co-pilot running at http://localhost:${port}`);
   const ai = providers()[0];
   if (ai) console.log(`AI assistant: ${ai.label}, model ${ai.model}`);

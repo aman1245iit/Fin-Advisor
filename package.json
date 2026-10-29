@@ -28,5 +28,8 @@
     "express": "^5.3.0",
     "nodemailer": "^10.2.1",
     "pdfjs-dist": "^6.4.299"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
