@@ -1,7 +1,7 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
 import express from 'express';
-import { db, audit, now } from './db.js';
+import { db, audit, now, dbRemote } from './db.js';
 import { runPipeline } from './engine/pipeline.js';
 import { corpusStats, searchDocuments, pageText, addDocument, removeDocument } from './engine/rag.js';
 import { assistantAnswer, llmEnabled, providers } from './engine/assistant.js';
@@ -12,7 +12,7 @@ import { CAPACITY_RULES, CAPACITY_BANDS, TOLERANCE_QUESTIONS, TOLERANCE_BANDS } 
 import { ASSET_ASSUMPTIONS, ASSET_VOLATILITY, GOAL_TYPES, EQUITY_STRESS_FALL, GLIDE_START, GLIDE_END } from './engine/planner.js';
 import { SPECIAL_REQUESTS } from './engine/guardrails.js';
 import { renderClientReport, renderBlocked } from './client-report.js';
-import { authRouter, requireAdviser, sessionAdviser } from './auth.js';
+import { authRouter, authReady, requireAdviser, sessionAdviser } from './auth.js';
 import { mailConfigured, sendMail } from './mailer.js';
 
 const PUBLIC_DIR = path.resolve(import.meta.dirname, '..', 'public');
@@ -20,6 +20,8 @@ const app = express();
 // Routes match exactly as written, so /API/cases cannot reach /api/cases past the sign-in check.
 app.set('case sensitive routing', true);
 app.use(express.json({ limit: '2mb' }));
+// Requests wait until the database tables exist (the first request after a cold start on Vercel).
+app.use((_req, _res, next) => authReady.then(() => next(), next));
 app.use('/api/auth', authRouter);
 
 // Sign-in required for the co-pilot, its data and uploaded documents. Public: the front page,
@@ -47,7 +49,7 @@ app.use('/docs', express.static(DOCS_DIR, { caseSensitive: true, setHeaders: (re
 
 const MIN_JUSTIFICATION = 15;
 const parse = (row, key) => (row ? JSON.parse(row[key]) : null);
-const latestDraft = (caseId) => db.prepare('SELECT * FROM drafts WHERE case_id = ? ORDER BY version DESC LIMIT 1').get(caseId);
+const latestDraft = (caseId) => db.get('SELECT * FROM drafts WHERE case_id = ? ORDER BY version DESC LIMIT 1', caseId);
 
 const MAX_GOALS = 10;
 const MAX_AMOUNT = 1e12; // ₹1 lakh crore: anything larger is a typing error
@@ -97,31 +99,30 @@ function diff(a = {}, b = {}, prefix = '') {
   return out;
 }
 
-function caseView(id) {
-  const c = db.prepare('SELECT * FROM cases WHERE id = ?').get(id);
+async function caseView(id) {
+  const c = await db.get('SELECT * FROM cases WHERE id = ?', id);
   if (!c) return null;
-  const drafts = db.prepare('SELECT id, version, status, created_at, created_by, change_summary FROM drafts WHERE case_id = ? ORDER BY version DESC').all(id);
-  const latest = latestDraft(id);
+  const drafts = await db.all('SELECT id, version, status, created_at, created_by, change_summary FROM drafts WHERE case_id = ? ORDER BY version DESC', id);
+  const latest = await latestDraft(id);
   return {
     id: c.id, status: c.status, createdAt: c.created_at, updatedAt: c.updated_at,
     client: parse(c, 'client_json'),
     draft: latest ? { id: latest.id, version: latest.version, status: latest.status, ...parse(latest, 'draft_json'), ...(latest.status === 'APPROVED' ? { shareToken: latest.share_token } : {}) } : null,
     history: drafts.map((d) => ({ ...d, change_summary: d.change_summary ? JSON.parse(d.change_summary) : null })),
-    reviews: db.prepare('SELECT * FROM reviews WHERE case_id = ? ORDER BY id DESC').all(id).map((r) => ({ ...r, justifications: JSON.parse(r.justifications_json || '{}') })),
-    audit: db.prepare('SELECT * FROM audit WHERE case_id = ? ORDER BY id DESC LIMIT 100').all(id).map((a) => ({ ...a, detail: JSON.parse(a.detail_json) })),
+    reviews: (await db.all('SELECT * FROM reviews WHERE case_id = ? ORDER BY id DESC', id)).map((r) => ({ ...r, justifications: JSON.parse(r.justifications_json || '{}') })),
+    audit: (await db.all('SELECT * FROM audit WHERE case_id = ? ORDER BY id DESC LIMIT 100', id)).map((a) => ({ ...a, detail: JSON.parse(a.detail_json) })),
   };
 }
 
-function createDraft(caseId, client, { overrides, adviserNotes, by, changes }) {
+async function createDraft(caseId, client, { overrides, adviserNotes, by, changes }) {
   const draft = runPipeline(client, { overrides, adviserNotes });
-  const prev = latestDraft(caseId);
+  const prev = await latestDraft(caseId);
   const version = (prev?.version ?? 0) + 1;
-  if (prev && prev.status === 'PENDING_REVIEW') db.prepare("UPDATE drafts SET status = 'SUPERSEDED' WHERE id = ?").run(prev.id);
-  db.prepare('INSERT INTO drafts (case_id, version, status, draft_json, created_at, created_by, change_summary) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(caseId, version, 'PENDING_REVIEW', JSON.stringify(draft), now(), by, changes ? JSON.stringify(changes) : null);
-  db.prepare("UPDATE cases SET status = 'PENDING_REVIEW', client_json = ?, client_name = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(client), client.name, now(), caseId);
-  audit(caseId, 'DRAFT_CREATED', { version, by, flags: draft.guardrails.flags.length, blocking: draft.guardrails.blocking, changes });
-  audit(caseId, 'SENT_TO_ADVISER_DASHBOARD', { version });
+  if (prev && prev.status === 'PENDING_REVIEW') await db.run("UPDATE drafts SET status = 'SUPERSEDED' WHERE id = ?", prev.id);
+  await db.run('INSERT INTO drafts (case_id, version, status, draft_json, created_at, created_by, change_summary) VALUES (?, ?, ?, ?, ?, ?, ?)', caseId, version, 'PENDING_REVIEW', JSON.stringify(draft), now(), by, changes ? JSON.stringify(changes) : null);
+  await db.run("UPDATE cases SET status = 'PENDING_REVIEW', client_json = ?, client_name = ?, updated_at = ? WHERE id = ?", JSON.stringify(client), client.name, now(), caseId);
+  await audit(caseId, 'DRAFT_CREATED', { version, by, flags: draft.guardrails.flags.length, blocking: draft.guardrails.blocking, changes });
+  await audit(caseId, 'SENT_TO_ADVISER_DASHBOARD', { version });
   return version;
 }
 
@@ -139,43 +140,42 @@ app.get('/api/funds', (_req, res) => res.json(allFunds()));
 
 // Counts for the public front page (no client names). Client cases are private: the count is
 // included only for a signed-in adviser, and left out for visitors.
-app.get('/api/public-stats', (req, res) => {
+app.get('/api/public-stats', async (req, res) => {
   const docs = corpusStats().documents ?? [];
   res.json({
     funds: allFunds().length,
     docs: docs.length,
     pages: docs.reduce((s, d) => s + (d.pages || 0), 0),
-    ...(sessionAdviser(req) ? { cases: db.prepare('SELECT COUNT(*) AS n FROM cases').get().n } : {}),
+    ...((await sessionAdviser(req)) ? { cases: (await db.get('SELECT COUNT(*) AS n FROM cases')).n } : {}),
   });
 });
 
-app.get('/api/cases', (_req, res) => {
-  res.json(db.prepare('SELECT id, client_name, status, created_at, updated_at FROM cases ORDER BY updated_at DESC').all());
+app.get('/api/cases', async (_req, res) => {
+  res.json(await db.all('SELECT id, client_name, status, created_at, updated_at FROM cases ORDER BY updated_at DESC'));
 });
 
-app.post('/api/cases', (req, res) => {
+app.post('/api/cases', async (req, res) => {
   const client = req.body.client ?? {};
   const errors = validateClient(client);
   if (errors.length) return res.status(400).json({ errors });
-  const r = db.prepare('INSERT INTO cases (client_name, client_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-    .run(client.name, JSON.stringify(client), 'DRAFT', now(), now());
-  const id = Number(r.lastInsertRowid);
-  audit(id, 'CLIENT_PROFILE_SUBMITTED', { by: req.adviser.name, adviserId: req.adviser.id });
-  createDraft(id, client, { by: 'co-pilot' });
-  res.status(201).json(caseView(id));
+  const r = await db.run('INSERT INTO cases (client_name, client_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', client.name, JSON.stringify(client), 'DRAFT', now(), now());
+  const id = r.lastInsertRowid;
+  await audit(id, 'CLIENT_PROFILE_SUBMITTED', { by: req.adviser.name, adviserId: req.adviser.id });
+  await createDraft(id, client, { by: 'co-pilot' });
+  res.status(201).json(await caseView(id));
 });
 
-app.get('/api/cases/:id', (req, res) => {
-  const v = caseView(+req.params.id);
+app.get('/api/cases/:id', async (req, res) => {
+  const v = await caseView(+req.params.id);
   return v ? res.json(v) : res.status(404).json({ error: 'not found' });
 });
 
 // Edit and resubmit: adviser changes profile inputs, fund picks or notes → new draft version.
-app.put('/api/cases/:id', (req, res) => {
+app.put('/api/cases/:id', async (req, res) => {
   const id = +req.params.id;
-  const row = db.prepare('SELECT * FROM cases WHERE id = ?').get(id);
+  const row = await db.get('SELECT * FROM cases WHERE id = ?', id);
   if (!row) return res.status(404).json({ error: 'not found' });
-  const prev = latestDraft(id);
+  const prev = await latestDraft(id);
   const prevDraft = parse(prev, 'draft_json');
   const client = req.body.client ?? JSON.parse(row.client_json);
   const errors = validateClient(client);
@@ -189,15 +189,15 @@ app.put('/api/cases/:id', (req, res) => {
   ];
   const by = req.adviser.name; // the signed-in account, never a name sent by the browser
   if (prev?.status === 'APPROVED' && !changes.length) return res.status(409).json({ error: 'Draft already approved and nothing changed.' });
-  createDraft(id, client, { overrides, adviserNotes, by, changes });
-  audit(id, 'EDITED_AND_RESUBMITTED', { by, changes: changes.length });
-  res.json(caseView(id));
+  await createDraft(id, client, { overrides, adviserNotes, by, changes });
+  await audit(id, 'EDITED_AND_RESUBMITTED', { by, changes: changes.length });
+  res.json(await caseView(id));
 });
 
-app.post('/api/cases/:id/review', (req, res) => {
+app.post('/api/cases/:id/review', async (req, res) => {
   const id = +req.params.id;
   const { action, note = '', justifications = {} } = req.body;
-  const d = latestDraft(id);
+  const d = await latestDraft(id);
   if (!d) return res.status(404).json({ error: 'no draft' });
   if (!['approve', 'reject', 'request_changes'].includes(action)) return res.status(400).json({ error: 'action must be approve, reject or request_changes' });
   if (typeof note !== 'string' || !justifications || typeof justifications !== 'object') return res.status(400).json({ error: 'Invalid note or justifications.' });
@@ -210,18 +210,17 @@ app.post('/api/cases/:id/review', (req, res) => {
   if (action === 'approve') {
     const missing = draft.guardrails.blocking.filter((fid) => String(justifications[fid] ?? '').trim().length < MIN_JUSTIFICATION);
     if (missing.length) {
-      audit(id, 'APPROVAL_BLOCKED', { adviser, missing });
+      await audit(id, 'APPROVAL_BLOCKED', { adviser, missing });
       return res.status(422).json({ error: `Approval blocked: high-severity flags ${missing.join(', ')} need a written justification (min ${MIN_JUSTIFICATION} characters).`, missing });
     }
   }
   if ((action === 'reject' || action === 'request_changes') && note.trim().length < 5) return res.status(400).json({ error: 'Please give a reason.' });
   const status = { approve: 'APPROVED', reject: 'REJECTED', request_changes: 'CHANGES_REQUESTED' }[action];
-  db.prepare('UPDATE drafts SET status = ?, share_token = ? WHERE id = ?').run(status, action === 'approve' ? shareToken() : null, d.id);
-  db.prepare('UPDATE cases SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), id);
-  db.prepare('INSERT INTO reviews (case_id, draft_id, action, adviser, adviser_id, note, justifications_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(id, d.id, action, adviser, req.adviser.id, note, JSON.stringify(justifications), now());
-  audit(id, `DRAFT_${status}`, { version: d.version, adviser, adviserId: req.adviser.id, email: req.adviser.email, note });
-  res.json(caseView(id));
+  await db.run('UPDATE drafts SET status = ?, share_token = ? WHERE id = ?', status, action === 'approve' ? shareToken() : null, d.id);
+  await db.run('UPDATE cases SET status = ?, updated_at = ? WHERE id = ?', status, now(), id);
+  await db.run('INSERT INTO reviews (case_id, draft_id, action, adviser, adviser_id, note, justifications_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, d.id, action, adviser, req.adviser.id, note, JSON.stringify(justifications), now());
+  await audit(id, `DRAFT_${status}`, { version: d.version, adviser, adviserId: req.adviser.id, email: req.adviser.email, note });
+  res.json(await caseView(id));
 });
 
 // Research: every question goes to the AI agent (library, engines and official SEBI-regulated sources).
@@ -230,18 +229,18 @@ app.post('/api/research', async (req, res) => {
   if (!question?.trim()) return res.status(400).json({ error: 'question required' });
   let draft = null, contextCodes = [], previous = [];
   if (caseId) {
-    const row = latestDraft(+caseId);
+    const row = await latestDraft(+caseId);
     draft = row ? { ...parse(row, 'draft_json'), version: row.version } : null;
     contextCodes = draft?.funds?.map((f) => f.selected?.code).filter(Boolean) ?? [];
-    previous = db.prepare('SELECT question, answer_json FROM research WHERE case_id = ? ORDER BY id DESC LIMIT 6').all(+caseId).reverse()
+    previous = (await db.all('SELECT question, answer_json FROM research WHERE case_id = ? ORDER BY id DESC LIMIT 6', +caseId)).reverse()
       .map((r) => { const a = JSON.parse(r.answer_json); return { question: r.question, answer: a.answer ?? (a.facts ?? []).map((f) => f.text).join(' '), fundCodes: a.fundCodes ?? [] }; });
   }
   if (!llmEnabled()) return res.status(503).json({ error: 'The AI agent is not set up. Add FREE_AI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server.' });
   let a;
   try { a = await assistantAnswer(question, { draft, contextCodes, history: previous }); }
   catch (e) { a = { type: 'not_found', answer: `The AI agent could not finish this question (${e.message}). Please try again.`, facts: [], passages: [], sources: [], steps: [], mode: 'ai-agent' }; }
-  db.prepare('INSERT INTO research (case_id, question, answer_json, created_at) VALUES (?, ?, ?, ?)').run(caseId ?? null, question, JSON.stringify(a), now());
-  if (caseId) audit(+caseId, 'RESEARCH_QUESTION', { question, type: a.type, mode: a.mode });
+  await db.run('INSERT INTO research (case_id, question, answer_json, created_at) VALUES (?, ?, ?, ?)', caseId ?? null, question, JSON.stringify(a), now());
+  if (caseId) await audit(+caseId, 'RESEARCH_QUESTION', { question, type: a.type, mode: a.mode });
   res.json(a);
 });
 
@@ -252,7 +251,7 @@ app.post('/api/fintel', async (req, res) => {
   const question = String(req.body.question ?? '').trim();
   if (!question) return res.status(400).json({ error: 'Type a question.' });
   if (!llmEnabled()) return res.status(503).json({ error: 'Fintel is not set up yet. Add FREE_AI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server.' });
-  const adviser = sessionAdviser(req);
+  const adviser = await sessionAdviser(req);
   const key = adviser ? `a${adviser.id}` : `ip${req.ip}`, max = adviser ? 60 : 15;
   const h = fintelHits.get(key);
   if (!h || Date.now() - h.first >= FINTEL_WINDOW_MS) fintelHits.set(key, { count: 1, first: Date.now() });
@@ -292,9 +291,9 @@ app.post('/api/contact', async (req, res) => {
   }
 });
 
-app.delete('/api/cases/:id/research', (req, res) => {
-  db.prepare('DELETE FROM research WHERE case_id = ?').run(+req.params.id);
-  audit(+req.params.id, 'RESEARCH_CHAT_CLEARED', {});
+app.delete('/api/cases/:id/research', async (req, res) => {
+  await db.run('DELETE FROM research WHERE case_id = ?', +req.params.id);
+  await audit(+req.params.id, 'RESEARCH_CHAT_CLEARED', {});
   res.json({ ok: true });
 });
 
@@ -317,34 +316,34 @@ app.post('/api/docs', express.raw({ type: 'application/pdf', limit: '40mb' }), a
   if (title.length < 3) return res.status(400).json({ error: 'A document title is required.' });
   try {
     const doc = await addDocument(req.body, { title, type, publisher: String(req.query.publisher || 'Uploaded by adviser'), asOf: req.query.asOf || null, sourceUrl: /^https?:\/\//.test(req.query.url ?? '') ? req.query.url : '' });
-    audit(null, 'DOCUMENT_UPLOADED', { id: doc.id, title, pages: doc.pages });
+    await audit(null, 'DOCUMENT_UPLOADED', { id: doc.id, title, pages: doc.pages });
     res.status(201).json(doc);
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
-app.delete('/api/docs/:id', (req, res) => {
+app.delete('/api/docs/:id', async (req, res) => {
   const r = removeDocument(req.params.id);
-  if (r.status === 200) audit(null, 'DOCUMENT_REMOVED', { id: req.params.id });
+  if (r.status === 200) await audit(null, 'DOCUMENT_REMOVED', { id: req.params.id });
   res.status(r.status).json(r);
 });
 
-app.get('/api/cases/:id/research', (req, res) => {
-  res.json(db.prepare('SELECT * FROM research WHERE case_id = ? ORDER BY id').all(+req.params.id).map((r) => ({ question: r.question, ...JSON.parse(r.answer_json), at: r.created_at })));
+app.get('/api/cases/:id/research', async (req, res) => {
+  res.json((await db.all('SELECT * FROM research WHERE case_id = ? ORDER BY id', +req.params.id)).map((r) => ({ question: r.question, ...JSON.parse(r.answer_json), at: r.created_at })));
 });
 
 // Client-facing output: the link carries a random token issued when a draft is approved, so
 // reports cannot be found by counting case numbers. It works only while that draft is still the
 // latest one; after a new version, the client needs the link from the next approval.
-app.get('/client/:token', (req, res) => {
+app.get('/client/:token', async (req, res) => {
   const token = req.params.token;
-  const d = /^[\w-]{32}$/.test(token) ? db.prepare('SELECT * FROM drafts WHERE share_token = ?').get(token) : null;
+  const d = /^[\w-]{32}$/.test(token) ? await db.get('SELECT * FROM drafts WHERE share_token = ?', token) : null;
   if (!d) return res.status(404).send(renderBlocked('NOT_FOUND'));
-  const latest = latestDraft(d.case_id);
+  const latest = await latestDraft(d.case_id);
   if (latest.id !== d.id || d.status !== 'APPROVED') {
-    audit(d.case_id, 'CLIENT_OUTPUT_BLOCKED', { version: d.version, status: latest.id !== d.id ? `SUPERSEDED_BY_V${latest.version}` : d.status });
+    await audit(d.case_id, 'CLIENT_OUTPUT_BLOCKED', { version: d.version, status: latest.id !== d.id ? `SUPERSEDED_BY_V${latest.version}` : d.status });
     return res.status(403).send(renderBlocked(latest.id !== d.id ? 'SUPERSEDED' : d.status));
   }
-  const review = db.prepare("SELECT * FROM reviews WHERE draft_id = ? AND action = 'approve' ORDER BY id DESC LIMIT 1").get(d.id);
-  audit(d.case_id, 'CLIENT_OUTPUT_VIEWED', { version: d.version });
+  const review = await db.get("SELECT * FROM reviews WHERE draft_id = ? AND action = 'approve' ORDER BY id DESC LIMIT 1", d.id);
+  await audit(d.case_id, 'CLIENT_OUTPUT_VIEWED', { version: d.version });
   res.send(renderClientReport(JSON.parse(d.draft_json), { version: d.version, adviser: review.adviser, approvedAt: review.created_at }));
 });
 
@@ -367,13 +366,17 @@ app.use((err, req, res, _next) => {
 export default app;
 
 const port = +process.env.PORT || 4400;
-if (!process.env.VERCEL) app.listen(port, () => {
-  console.log(`Adviser co-pilot running at http://localhost:${port}`);
-  const ai = providers()[0];
-  if (ai) console.log(`AI assistant: ${ai.label}, model ${ai.model}`);
-  else if (process.env.FREE_AI_API_KEY?.trim()) console.warn('AI assistant OFF: FREE_AI_API_KEY is set but its provider is not recognised. Set FREE_AI_PROVIDER, or FREE_AI_BASE_URL and FREE_AI_MODEL, in .env.');
-  else console.log('AI assistant off (no key in .env); research uses document search.');
-  console.log(mailConfigured()
-    ? `Password-reset emails: sent via ${process.env.SMTP_HOST.trim()}`
-    : 'Password-reset emails: SMTP not set up in .env, so reset links are printed here instead of emailed.');
-});
+if (!process.env.VERCEL) {
+  await authReady;
+  app.listen(port, () => {
+    console.log(`Adviser co-pilot running at http://localhost:${port}`);
+    const ai = providers()[0];
+    if (ai) console.log(`AI assistant: ${ai.label}, model ${ai.model}`);
+    else if (process.env.FREE_AI_API_KEY?.trim()) console.warn('AI assistant OFF: FREE_AI_API_KEY is set but its provider is not recognised. Set FREE_AI_PROVIDER, or FREE_AI_BASE_URL and FREE_AI_MODEL, in .env.');
+    else console.log('AI assistant off (no key in .env); research uses document search.');
+    console.log(dbRemote ? `Database: hosted (${new URL(process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL).host})` : 'Database: local file');
+    console.log(mailConfigured()
+      ? `Password-reset emails: sent via ${process.env.SMTP_HOST.trim()}`
+      : 'Password-reset emails: SMTP not set up in .env, so reset links are printed here instead of emailed.');
+  });
+}

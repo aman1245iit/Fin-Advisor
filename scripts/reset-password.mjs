@@ -9,7 +9,7 @@ if (!email) {
   process.exit(1);
 }
 try {
-  const temp = adminResetPassword(email);
+  const temp = await adminResetPassword(email);
   console.log(`Temporary password for ${email}: ${temp}`);
   console.log('Sign in with it, then change it in Settings. All of this adviser\'s sessions were signed out.');
 } catch (e) {

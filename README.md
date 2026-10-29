@@ -109,7 +109,7 @@ Ranking weights: median rolling 1-year return 30%, max drawdown 20%, TER 20%, vo
 * High-severity flags block approval until each has a written justification (enforced server-side, HTTP 422).
 * Client output is served at `/client/<share token>`: a random link issued when a draft is approved, so reports cannot be found by counting case numbers. It works only while that draft is the latest version; otherwise it returns 403, and each attempt is logged.
 * Approvals, rejections and resubmissions are signed by the signed-in account (the adviser can add a SEBI registration number, e.g. INA000012345); a name sent by the browser is ignored.
-* Every submission, draft version (with a field-level diff), review decision, research question and client-output access is written to SQLite (`data/copilot.db`).
+* Every submission, draft version (with a field-level diff), review decision, research question and client-output access is written to SQLite: the local file `data/copilot.db`, or a hosted Turso (libSQL) database when `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are set, which is required on Vercel.
 * Conflict-of-interest disclosure: fee-only, direct plans only, the universe limitation, and adviser-declared conflicts.
 
 **Integration principle:** all figures come from deterministic engines. The language model (optional) only rephrases retrieved, cited text, and cannot override the suitability engine.
