@@ -50,7 +50,7 @@ export const db = {
   batch: (stmts) => client.batch(stmts.map(([sql, ...args]) => ({ sql, args })), 'write'),
 };
 
-async function migrate() {
+export async function migrate() {
   if (!dbRemote) await db.exec('PRAGMA journal_mode = WAL;');
   await db.exec(`
     CREATE TABLE IF NOT EXISTS cases (
@@ -98,17 +98,23 @@ async function migrate() {
   `);
 
   // Columns added after the first release; existing databases get them on start-up.
+  // On Vercel two cold-starting instances can run this at the same moment, so a column the other
+  // instance has just added ("duplicate column name") counts as done.
   const hasColumn = async (table, col) => (await db.all(`PRAGMA table_info(${table})`)).some((c) => c.name === col);
-  if (!(await hasColumn('drafts', 'share_token'))) await db.exec('ALTER TABLE drafts ADD COLUMN share_token TEXT');
-  if (!(await hasColumn('reviews', 'adviser_id'))) await db.exec('ALTER TABLE reviews ADD COLUMN adviser_id INTEGER');
+  const addColumn = async (table, col, type) => {
+    if (await hasColumn(table, col)) return;
+    try { await db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`); }
+    catch (e) { if (!/duplicate column/i.test(e.message)) throw e; }
+  };
+  await addColumn('drafts', 'share_token', 'TEXT');
+  await addColumn('reviews', 'adviser_id', 'INTEGER');
   // Each case belongs to the adviser who added it. Older cases are matched to their adviser
   // through the CLIENT_PROFILE_SUBMITTED audit entry; any left unmatched are shown to no one.
-  if (!(await hasColumn('cases', 'adviser_id'))) {
-    await db.exec('ALTER TABLE cases ADD COLUMN adviser_id INTEGER');
-    await db.exec(`UPDATE cases SET adviser_id = (
-      SELECT json_extract(a.detail_json, '$.adviserId') FROM audit a
-      WHERE a.case_id = cases.id AND a.event = 'CLIENT_PROFILE_SUBMITTED' ORDER BY a.id LIMIT 1)`);
-  }
+  await addColumn('cases', 'adviser_id', 'INTEGER');
+  await db.exec(`UPDATE cases SET adviser_id = (
+    SELECT json_extract(a.detail_json, '$.adviserId') FROM audit a
+    WHERE a.case_id = cases.id AND a.event = 'CLIENT_PROFILE_SUBMITTED' ORDER BY a.id LIMIT 1)
+    WHERE adviser_id IS NULL`);
   await db.exec('CREATE INDEX IF NOT EXISTS cases_adviser ON cases(adviser_id)');
   await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS drafts_share_token ON drafts(share_token)');
   // Drafts approved before share links existed get one, so they can still be shared.
@@ -116,8 +122,6 @@ async function migrate() {
     await db.run('UPDATE drafts SET share_token = ? WHERE id = ?', crypto.randomBytes(24).toString('base64url'), id);
   }
 }
-// Resolves once the core tables exist; other modules chain their own tables onto it.
-export const ready = migrate();
 
 export const now = () => new Date().toISOString();
 export async function audit(caseId, event, detail) {

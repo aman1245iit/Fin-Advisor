@@ -21,7 +21,7 @@ const app = express();
 app.set('case sensitive routing', true);
 app.use(express.json({ limit: '2mb' }));
 // Requests wait until the database tables exist (the first request after a cold start on Vercel).
-app.use((_req, _res, next) => authReady.then(() => next(), next));
+app.use((_req, _res, next) => authReady().then(() => next(), next));
 app.use('/api/auth', authRouter);
 
 // Sign-in required for the co-pilot, its data and uploaded documents. Public: the front page,
@@ -436,7 +436,7 @@ export default app;
 
 const port = +process.env.PORT || 4400;
 if (!process.env.VERCEL) {
-  await authReady;
+  await authReady();
   app.listen(port, () => {
     console.log(`Adviser co-pilot running at http://localhost:${port}`);
     const ai = providers()[0];

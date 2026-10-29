@@ -8,7 +8,7 @@
 // Anyone can create an account from the sign-in page; a signed-in adviser can also add others.
 import crypto from 'node:crypto';
 import express from 'express';
-import { db, ready, audit, now, dbPersistent } from './db.js';
+import { db, migrate, audit, now, dbPersistent } from './db.js';
 import { sendMail } from './mailer.js';
 
 export const COOKIE = 'fa_session';
@@ -60,7 +60,7 @@ const httpError = (status, message) => Object.assign(new Error(message), { statu
 // ---------- Storage ----------
 // recovery_hash is unused (recovery codes were replaced by email reset links); kept so
 // existing databases need no migration.
-export const authReady = ready.then(() => db.exec(`
+const createAuthTables = () => db.exec(`
   CREATE TABLE IF NOT EXISTS advisers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -83,7 +83,16 @@ export const authReady = ready.then(() => db.exec(`
     expires_at TEXT NOT NULL,
     used_at TEXT
   );
-`)).then(() => claimOrphanCases());
+`);
+
+// Resolves once every table exists. A failed start-up (two cold-starting instances migrating at
+// once, or the hosted database briefly unreachable) is not kept: the next request tries again,
+// instead of the instance answering "Something went wrong" until Vercel recycles it.
+let setup = null;
+export function authReady() {
+  setup ??= migrate().then(createAuthTables).then(claimOrphanCases).catch((e) => { setup = null; throw e; });
+  return setup;
+}
 
 // Cases saved while the co-pilot had no sign-in have no adviser, so no one can see them. While
 // there is only one account they can only be that adviser's, so they are given to it; once a
@@ -114,7 +123,7 @@ async function setPassword(adviserId, password) {
 
 // Sets a new password and returns it; for the server-side reset script.
 export async function adminResetPassword(email) {
-  await authReady;
+  await authReady();
   const a = await byEmail(email);
   if (!a) throw httpError(404, `No adviser with email ${normEmail(email)}.`);
   const temp = crypto.randomBytes(9).toString('base64url');
@@ -142,7 +151,7 @@ function tokenOf(req) {
 export async function sessionAdviser(req) {
   const token = tokenOf(req);
   if (!token) return null;
-  await authReady;
+  await authReady();
   const s = await db.get('SELECT * FROM sessions WHERE token_hash = ?', sha256(token));
   if (!s || s.expires_at < now()) return null;
   return publicAdviser(await byId(s.adviser_id));
@@ -183,7 +192,7 @@ export async function requireAdviser(req, res, next) {
 
 // ---------- Routes (/api/auth/...) ----------
 const wrap = (fn) => async (req, res) => {
-  try { await authReady; await fn(req, res); } catch (e) { res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong.' }); if (!e.status) console.error(e); }
+  try { await authReady(); await fn(req, res); } catch (e) { res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong.' }); if (!e.status) console.error(e); }
 };
 
 // Reset links point at APP_URL (set it when the site is not on localhost). The request's Host
