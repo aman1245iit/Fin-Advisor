@@ -2,7 +2,7 @@
 // reference the research agent cites instead of searching the web (slow, and often missing the
 // rate). Each rule names the section it comes from. Budgets change these, so AS_OF and the review
 // note travel with every answer; update the table after each Union Budget.
-export const TAX_AS_OF = 'Finance (No. 2) Act, 2024: transfers on or after 23 July 2024';
+export const TAX_AS_OF = 'Finance (No. 2) Act, 2024: units sold (transferred) on or after 23 July 2024, whatever the purchase date';
 export const TAX_SOURCE = {
   label: 'Income Tax Department – capital gains on mutual fund units (Income-tax Act ss. 111A, 112A, 112, 50AA; Finance (No. 2) Act, 2024)',
   url: 'https://www.incometax.gov.in/iec/foportal/',
@@ -15,7 +15,7 @@ export const TAX_RULES = [
     rules: [
       'Short-term: units held 12 months or less. Gains taxed at 20% (s. 111A), plus surcharge and 4% health & education cess.',
       'Long-term: units held more than 12 months. Gains above ₹1,25,000 in a financial year taxed at 12.5% (s. 112A), without indexation, plus surcharge and 4% cess. The first ₹1,25,000 of long-term gains a year is exempt.',
-      'Before 23 July 2024 the rates were 15% (short-term) and 10% above ₹1,00,000 (long-term).',
+      'These rates depend on the sale date, not the purchase date. Units sold before 23 July 2024 were taxed at 15% (short-term) and 10% above ₹1,00,000 (long-term).',
       'Securities transaction tax (STT) applies on redemption of equity-oriented fund units.',
     ],
   },
