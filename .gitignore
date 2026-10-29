@@ -1,0 +1,4 @@
+node_modules/
+data/copilot.db*
+data/raw/
+.env

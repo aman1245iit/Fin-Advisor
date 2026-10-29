@@ -1,0 +1,406 @@
+{
+ "118585": {
+  "expenseRatio": 0.33,
+  "aumCr": 17215.96,
+  "managers": [
+   "Mr. Vikash Agarwal",
+   "Mr. Rohit Hashmukh Shah (Co-fund7.88",
+   "Mr. Nemish Sheth"
+  ],
+  "managerSince": "2024-09-01",
+  "inception": "2010-10-14",
+  "directPlanFirstNav": "2013-01-03",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 120
+  }
+ },
+ "118632": {
+  "expenseRatio": 0.68,
+  "aumCr": 51296.06,
+  "managers": [
+   "Mr. Sailesh Raj Bhan",
+   "Mr. Bhavik Dave (Assistant Fund Manager)"
+  ],
+  "managerSince": "2007-08-01",
+  "inception": "2007-08-08",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 6
+  }
+ },
+ "118650": {
+  "expenseRatio": 0.68,
+  "aumCr": 53766.63,
+  "managers": [
+   "Mr. Sailesh Raj Bhan",
+   "Mr. Yatin Matta (Assistant Fund Manager)"
+  ],
+  "managerSince": "2005-03-01",
+  "inception": "2005-03-28",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 27
+  }
+ },
+ "118663": {
+  "expenseRatio": 0.05,
+  "aumCr": 7353.12,
+  "managers": [
+   "Mr. Himanshu Mange"
+  ],
+  "managerSince": "2023-12-01",
+  "inception": "2011-03-07",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 285
+  }
+ },
+ "118668": {
+  "expenseRatio": 0.68,
+  "aumCr": 50176.01,
+  "managers": [
+   "Mr. Rupesh Patel"
+  ],
+  "managerSince": "2023-01-01",
+  "inception": "1995-10-08",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 15
+  }
+ },
+ "118672": {
+  "expenseRatio": 0.5,
+  "aumCr": 1486.62,
+  "managers": [
+   "Mr. Pranay Sinha"
+  ],
+  "managerSince": "2021-03-01",
+  "inception": "2008-08-22",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 108
+  }
+ },
+ "118701": {
+  "expenseRatio": 0.2,
+  "aumCr": 40489.55,
+  "managers": [
+   "Mr. Vikash Agarwal"
+  ],
+  "managerSince": "2024-09-01",
+  "inception": "2003-12-09",
+  "directPlanFirstNav": "2013-01-01",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 69
+  }
+ },
+ "118719": {
+  "expenseRatio": 0.22,
+  "aumCr": 19854.77,
+  "managers": [
+   "Mr. Vikash Agarwal"
+  ],
+  "managerSince": "2024-09-01",
+  "inception": "2005-06-16",
+  "directPlanFirstNav": "2013-01-01",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 72
+  }
+ },
+ "118736": {
+  "expenseRatio": 0.65,
+  "aumCr": 9532.23,
+  "managers": [
+   "Mr. Sushil Budhia",
+   "Mr. Bhavik Dave"
+  ],
+  "managerSince": "2021-03-01",
+  "inception": "2004-11-15",
+  "directPlanFirstNav": "2013-01-03",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 111
+  }
+ },
+ "118741": {
+  "expenseRatio": 0.07,
+  "aumCr": 3461.09,
+  "managers": [
+   "Mr. Himanshu Mange"
+  ],
+  "managerSince": "2023-12-01",
+  "inception": "2010-09-28",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": 0.03,
+  "trackingError3y": 0.04,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 129
+  }
+ },
+ "118778": {
+  "expenseRatio": 0.6,
+  "aumCr": 80905.55,
+  "managers": [
+   "Mr. Samir Rachh"
+  ],
+  "managerSince": "2017-01-01",
+  "inception": "2010-09-16",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 21
+  }
+ },
+ "118796": {
+  "expenseRatio": 0.38,
+  "aumCr": 6363.76,
+  "managers": [
+   "Mr. Sushil Budhia",
+   "Mr. Vivek Sharma"
+  ],
+  "managerSince": "2021-03-01",
+  "inception": "2002-12-18",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 90
+  }
+ },
+ "118814": {
+  "expenseRatio": 0.36,
+  "aumCr": 8907.2,
+  "managers": [
+   "Mr. Vivek Sharma"
+  ],
+  "managerSince": "2020-02-01",
+  "inception": "2000-09-14",
+  "directPlanFirstNav": "2013-01-02",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 81
+  }
+ },
+ "122639": {
+  "expenseRatio": 0.53,
+  "aumCr": 145070.5,
+  "managers": [
+   "Mr. Rajeev Thakkar",
+   "Mr. Raunak Onkar",
+   "Mr. Raj Mehta",
+   "Mr. Rukun Tarachandani",
+   "Mr. Tejas Soman",
+   "Ms. Mansi Kariya",
+   "Ms. Aishwarya Dhar"
+  ],
+  "managerSince": "2013-05-24",
+  "inception": "2013-05-24",
+  "directPlanFirstNav": "2013-05-28",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "ppfas-fs-2026-09",
+   "page": 2
+  }
+ },
+ "134547": {
+  "expenseRatio": 0.38,
+  "aumCr": 5056.71,
+  "managers": [
+   "Mr. Pranay Sinha",
+   "Mr. Vivek Sharma"
+  ],
+  "managerSince": "2021-03-01",
+  "inception": "2015-05-15",
+  "directPlanFirstNav": "2015-05-18",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 84
+  }
+ },
+ "143269": {
+  "expenseRatio": 0.09,
+  "aumCr": 5228.31,
+  "managers": [
+   "Mr. Tejas Soman",
+   "Ms. Mansi Kariya",
+   "Ms. Aishwarya Dhar"
+  ],
+  "managerSince": "2025-09-01",
+  "inception": null,
+  "directPlanFirstNav": "2018-05-14",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "ppfas-fs-2026-09",
+   "page": 24
+  }
+ },
+ "148519": {
+  "expenseRatio": 0.35,
+  "aumCr": 3453.5,
+  "managers": [
+   "Mr. Himanshu Mange"
+  ],
+  "managerSince": "2023-12-01",
+  "inception": "2020-10-16",
+  "directPlanFirstNav": "2020-10-19",
+  "trackingError1y": 0.12,
+  "trackingError3y": 0.39,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 135
+  }
+ },
+ "148726": {
+  "expenseRatio": 0.3,
+  "aumCr": 2675.01,
+  "managers": [
+   "Mr. Himanshu Mange"
+  ],
+  "managerSince": "2023-12-01",
+  "inception": "2021-02-19",
+  "directPlanFirstNav": "2021-02-23",
+  "trackingError1y": 0.16,
+  "trackingError3y": 0.13,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 138
+  }
+ },
+ "148958": {
+  "expenseRatio": 0.24,
+  "aumCr": 3453.72,
+  "managers": [
+   "Mr. Rajeev Thakkar",
+   "Mr. Raunak Onkar",
+   "Mr. Raj Mehta",
+   "Mr. Rukun Tarachandani",
+   "Mr. Tejas Soman",
+   "Ms. Mansi Kariya"
+  ],
+  "managerSince": "2021-05-28",
+  "inception": null,
+  "directPlanFirstNav": "2021-05-28",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "ppfas-fs-2026-09",
+   "page": 17
+  }
+ },
+ "149094": {
+  "expenseRatio": 0.55,
+  "aumCr": 9214.06,
+  "managers": [
+   "Mrs. Meenakshi Dawar",
+   "Mr. Dhrumil Shah"
+  ],
+  "managerSince": "2023-01-01",
+  "inception": "2021-08-13",
+  "directPlanFirstNav": "2021-08-18",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "nippon-fs-2026-10",
+   "page": 30
+  }
+ },
+ "152109": {
+  "expenseRatio": 0.19,
+  "aumCr": 2749.88,
+  "managers": [
+   "Mr. Rajeev Thakkar",
+   "Mr. Raunak Onkar",
+   "Mr. Raj Mehta",
+   "Mr. Rukun Tarachandani",
+   "Mr. Tejas Soman",
+   "Ms. Aishwarya Dhar"
+  ],
+  "managerSince": "2023-11-02",
+  "inception": "2023-11-02",
+  "directPlanFirstNav": "2023-11-03",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "ppfas-fs-2026-09",
+   "page": 21
+  }
+ },
+ "152468": {
+  "expenseRatio": 0.23,
+  "aumCr": 2532.94,
+  "managers": [
+   "Mr. Rajeev Thakkar",
+   "Mr. Raunak Onkar",
+   "Mr. Raj Mehta",
+   "Mr. Rukun Tarachandani",
+   "Mr. Tejas Soman",
+   "Ms. Mansi Kariya"
+  ],
+  "managerSince": "2024-02-28",
+  "inception": null,
+  "directPlanFirstNav": "2024-02-28",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "ppfas-fs-2026-09",
+   "page": 13
+  }
+ },
+ "154155": {
+  "expenseRatio": 0.14,
+  "aumCr": 866.24,
+  "managers": [
+   "Mr. Rajeev Thakkar",
+   "Mr. Raunak Onkar",
+   "Mr. Raj Mehta",
+   "Mr. Rukun Tarachandani",
+   "Mr. Tejas Soman",
+   "Ms. Aishwarya Dhar"
+  ],
+  "managerSince": "2026-02-04",
+  "inception": "2026-02-04",
+  "directPlanFirstNav": "2026-02-06",
+  "trackingError1y": null,
+  "trackingError3y": null,
+  "source": {
+   "doc": "ppfas-fs-2026-09",
+   "page": 10
+  }
+ }
+}

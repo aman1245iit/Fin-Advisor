@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fin Advisor — Trusted Guidance</title>
+  <meta name="description" content="Fin Advisor is a co-pilot for SEBI-registered investment advisers: risk profiling, goal plans, fund screening, cited research and approval guardrails.">
+  <meta name="theme-color" content="#2a0e12">
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Fin Advisor" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --wine: #2a0e12;
+      --wine-deep: #1b080b;
+      --wine-up: #3a161b;
+      --gold: #d9c08f;
+      --gold-hi: #f3e4c0;
+      --gold-lo: #9f7f52;
+      --cream: #efe6d6;
+      --muted: #b9a693;
+      --line: rgba(217, 192, 143, .18);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--wine);
+      color: var(--cream);
+      font: 16px/1.6 Inter, system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    /* The fine ledger grid from the logo, fading towards the edges */
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 60% at 50% 30%, transparent 0, var(--wine) 85%),
+        linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 36px 36px,
+        linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 36px 36px;
+      opacity: .55;
+    }
+    a { color: var(--gold); }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+    .caps { font-family: Cinzel, Georgia, serif; letter-spacing: .32em; text-transform: uppercase; }
+    .gold-text {
+      background: linear-gradient(100deg, var(--gold-lo), var(--gold-hi) 45%, var(--gold) 60%, var(--gold-lo));
+      background-size: 220% 100%;
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: sheen 7s ease-in-out infinite;
+    }
+    @keyframes sheen { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
+
+    /* ---------- Nav ---------- */
+    nav.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0; }
+    .mini { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--cream); }
+    .mini img { width: 34px; height: 34px; border-radius: 8px; }
+    .mini span { font-size: 13px; }
+    .nav-actions { display: flex; align-items: center; gap: 10px; }
+    .account {
+      width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--gold); color: var(--gold); text-decoration: none;
+      display: grid; place-items: center; transition: background .2s, transform .2s; flex: none;
+    }
+    .account:hover { background: rgba(217, 192, 143, .1); transform: translateY(-1px); }
+    .account svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+    .account .initials { font-family: Cinzel, Georgia, serif; font-size: 14px; font-weight: 600; letter-spacing: .04em; }
+    .account.in { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--wine-deep); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px; text-decoration: none; cursor: pointer;
+      border-radius: 999px; padding: 12px 22px; font-weight: 600; font-size: 15px; border: 1px solid var(--gold);
+      transition: transform .2s, box-shadow .2s, background .2s;
+    }
+    .btn.solid { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--wine-deep); }
+    .btn.solid:hover { transform: translateY(-2px); box-shadow: 0 10px 30px -10px rgba(243, 228, 192, .55); }
+    .btn.ghost { color: var(--gold); background: transparent; }
+    .btn.ghost:hover { background: rgba(217, 192, 143, .08); }
+    .btn.small { padding: 8px 16px; font-size: 14px; }
+    .btn .arrow { transition: transform .2s; }
+    .btn:hover .arrow { transform: translateX(4px); }
+    :focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+
+    /* ---------- Hero ---------- */
+    .hero { text-align: center; padding: 40px 0 72px; }
+    .mark { width: min(300px, 70vw); height: auto; display: block; margin: 0 auto 8px; overflow: visible; }
+    .mark .hex { fill: none; stroke: url(#goldGrad); stroke-width: 11; stroke-linejoin: round; stroke-dasharray: 520; stroke-dashoffset: 520; animation: draw 1.8s cubic-bezier(.6, 0, .2, 1) forwards; }
+    .mark .hex.inner { stroke-width: 3; opacity: .55; }
+    .mark .hex:nth-of-type(2) { animation-delay: .25s; }
+    .mark .hex:nth-of-type(3) { animation-delay: .5s; }
+    .mark .hex:nth-of-type(4) { animation-delay: .7s; }
+    .mark .hex:nth-of-type(5) { animation-delay: .9s; }
+    .mark .hex:nth-of-type(6) { animation-delay: 1.1s; }
+    .mark .float { animation: bob 6s ease-in-out 2s infinite; transform-origin: center; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @keyframes bob { 50% { transform: translateY(-6px) rotate(1.5deg); } }
+    .wordmark { font-size: clamp(34px, 7.4vw, 76px); font-weight: 600; margin: 0; line-height: 1.1; letter-spacing: .14em; }
+    .tagline { color: var(--gold); font-size: clamp(11px, 1.6vw, 15px); letter-spacing: .5em; margin: 10px 0 34px; }
+    .rule { width: 120px; height: 1px; margin: 0 auto 30px; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+    .lede { font-family: Fraunces, Georgia, serif; font-size: clamp(22px, 3.2vw, 32px); line-height: 1.3; max-width: 760px; margin: 0 auto 16px; font-weight: 400; }
+    .lede em { color: var(--gold-hi); }
+    .sub { color: var(--muted); max-width: 620px; margin: 0 auto 34px; }
+    .ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .rise { opacity: 0; transform: translateY(14px); animation: rise .9s ease forwards; }
+    .d1 { animation-delay: .9s; } .d2 { animation-delay: 1.1s; } .d3 { animation-delay: 1.3s; } .d4 { animation-delay: 1.5s; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
+
+    /* ---------- Live stats ---------- */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); border-block: 1px solid var(--line); margin-bottom: 96px; }
+    .stat { padding: 22px 12px; text-align: center; }
+    .stat + .stat { border-left: 1px solid var(--line); }
+    .stat b { display: block; font-family: Fraunces, Georgia, serif; font-size: 34px; font-weight: 600; color: var(--gold-hi); font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .stat span { font-size: 12px; color: var(--muted); letter-spacing: .14em; text-transform: uppercase; }
+    .stats[hidden] { display: none; }
+    .stats.three { grid-template-columns: repeat(3, 1fr); }
+
+    /* ---------- Section heads ---------- */
+    .eyebrow { color: var(--gold); font-size: 12px; margin: 0 0 10px; }
+    h2 { font-family: Fraunces, Georgia, serif; font-weight: 400; font-size: clamp(28px, 4vw, 42px); line-height: 1.15; margin: 0 0 14px; }
+    .section { margin-bottom: 110px; }
+    .section > p.intro { color: var(--muted); max-width: 560px; margin: 0 0 40px; }
+
+    /* ---------- Honeycomb of the six screens ---------- */
+    .comb { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: center; }
+    .comb svg { width: 100%; height: auto; overflow: visible; }
+    .cell { cursor: default; }
+    .cell polygon { fill: var(--wine-up); stroke: var(--gold-lo); stroke-width: 1.5; transition: fill .3s, stroke .3s, transform .3s; transform-box: fill-box; transform-origin: center; }
+    .cell text { fill: var(--cream); font-family: Inter, sans-serif; font-size: 13px; text-anchor: middle; pointer-events: none; }
+    .cell text.n { font-family: Cinzel, serif; font-size: 26px; fill: var(--gold); }
+    .cell.on polygon, .cell:hover polygon { fill: #4a1d22; stroke: var(--gold-hi); transform: scale(1.04); }
+    .core polygon { fill: var(--wine-deep); stroke: var(--gold); stroke-width: 2; }
+    .steps-list { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+    .steps-list li { padding: 14px 16px; border-left: 2px solid var(--line); transition: border-color .3s, background .3s; }
+    .steps-list li.on { border-color: var(--gold); background: linear-gradient(90deg, rgba(217, 192, 143, .08), transparent); }
+    .steps-list b { font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: 18px; display: block; }
+    .steps-list b i { font-style: normal; font-family: Cinzel, serif; color: var(--gold); margin-right: 10px; }
+    .steps-list span { color: var(--muted); font-size: 14px; }
+
+    /* ---------- The gate ---------- */
+    .gate { position: relative; border: 1px solid var(--line); border-radius: 20px; padding: 56px 32px; text-align: center; overflow: hidden; background: radial-gradient(ellipse at 50% 0, rgba(217, 192, 143, .12), transparent 60%), var(--wine-deep); }
+    .gate blockquote { font-family: Fraunces, Georgia, serif; font-style: italic; font-size: clamp(24px, 3.6vw, 38px); line-height: 1.25; margin: 0 auto 40px; max-width: 760px; }
+    .thread { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; position: relative; max-width: 980px; margin: 0 auto; }
+    .thread::before { content: ""; position: absolute; left: 4%; right: 4%; top: 9px; height: 2px; background: linear-gradient(90deg, var(--gold-lo), var(--gold-hi)); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform 2.4s cubic-bezier(.4, 0, .2, 1); }
+    .thread::after { content: ""; position: absolute; left: 4%; right: 4%; top: 9px; height: 2px; background: var(--line); z-index: -1; }
+    .node { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); min-width: 0; }
+    .node i { width: 20px; height: 20px; transform: rotate(45deg); border: 2px solid var(--gold-lo); background: var(--wine-deep); position: relative; z-index: 1; transition: background .4s, border-color .4s; }
+    .node.lit i { background: var(--gold); border-color: var(--gold-hi); }
+    .node.lit { color: var(--cream); }
+    .node.key i { width: 26px; height: 26px; margin-top: -3px; box-shadow: 0 0 0 6px rgba(217, 192, 143, .12); }
+    .node.key { color: var(--gold-hi); font-weight: 600; }
+    .gate .note { color: var(--muted); font-size: 14px; margin: 36px auto 0; max-width: 560px; }
+
+    /* ---------- Pillars ---------- */
+    .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .pillar { border: 1px solid var(--line); border-radius: 16px; padding: 26px; background: rgba(27, 8, 11, .55); transition: border-color .3s, transform .3s; }
+    .pillar:hover { border-color: var(--gold-lo); transform: translateY(-3px); }
+    .pillar svg { width: 34px; height: 34px; stroke: var(--gold); fill: none; stroke-width: 1.6; margin-bottom: 14px; }
+    .pillar h3 { font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: 20px; margin: 0 0 6px; }
+    .pillar p { margin: 0; color: var(--muted); font-size: 15px; }
+
+    /* ---------- Closing ---------- */
+    .closing { text-align: center; margin-bottom: 70px; }
+    .closing h2 { margin-bottom: 26px; }
+    footer { border-top: 1px solid var(--line); padding: 24px 0 36px; color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity .8s ease, transform .8s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+
+    @media (max-width: 860px) {
+      .comb { grid-template-columns: 1fr; }
+      .comb svg { max-width: 460px; margin: 0 auto; display: block; }
+      .pillars { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(3) { border-left: 0; }
+      .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
+      /* Three figures (signed out): keep one row instead of leaving an orphan. */
+      .stats.three { grid-template-columns: repeat(3, 1fr); }
+      .stats.three .stat:nth-child(3) { border-left: 1px solid var(--line); }
+      .stats.three .stat:nth-child(n+3) { border-top: 0; }
+      .stats.three .stat b { font-size: 26px; }
+      .stats.three .stat span { letter-spacing: .08em; }
+      .thread { flex-direction: column; align-items: stretch; gap: 14px; padding-left: 4px; }
+      .thread::before, .thread::after { left: 13px; right: auto; top: 10px; bottom: 10px; width: 2px; height: auto; transform: scaleY(var(--p, 0)); transform-origin: top; }
+      .node { flex-direction: row; text-align: left; gap: 14px; }
+      .node.key i { margin: 0 -3px; }
+    }
+    @media (max-width: 520px) {
+      .gate { padding: 40px 18px; }
+      .mini span { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .rise, .reveal { opacity: 1; transform: none; }
+      .mark .hex { stroke-dashoffset: 0; }
+      .thread { --p: 1 !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="top" aria-label="Main">
+      <a class="mini" href="/">
+        <img src="/favicon.svg" alt="" width="34" height="34">
+        <span class="caps">Fin Advisor</span>
+      </a>
+      <div class="nav-actions">
+        <a class="btn ghost small" href="/app.html#/onboard">Open co-pilot</a>
+        <a class="account" id="account" href="/login.html" title="Adviser sign-in" aria-label="Adviser sign-in">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></svg>
+          <span class="initials" hidden></span>
+        </a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <!-- Interlocking hexagons, drawn in gold like the logo -->
+      <svg class="mark" viewBox="0 0 300 220" role="img" aria-label="Fin Advisor emblem">
+        <defs>
+          <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#f3e4c0" />
+            <stop offset=".45" stop-color="#d9c08f" />
+            <stop offset="1" stop-color="#8f6f45" />
+          </linearGradient>
+        </defs>
+        <g class="float">
+          <polygon class="hex" points="88,58 128,81 128,127 88,150 48,127 48,81" />
+          <polygon class="hex" points="172,30 212,53 212,99 172,122 132,99 132,53" />
+          <polygon class="hex" points="186,104 226,127 226,173 186,196 146,173 146,127" />
+          <polygon class="hex inner" points="88,78 111,92 111,116 88,130 65,116 65,92" />
+          <polygon class="hex inner" points="172,50 195,64 195,88 172,102 149,88 149,64" />
+          <polygon class="hex inner" points="186,124 209,138 209,162 186,176 163,162 163,138" />
+        </g>
+      </svg>
+      <h1 class="wordmark caps gold-text rise d1">Fin Advisor</h1>
+      <p class="tagline caps rise d1">Trusted Guidance</p>
+      <div class="rule rise d2"></div>
+      <p class="lede rise d2">From one client conversation to a plan you can <em>sign your name to</em>.</p>
+      <p class="sub rise d3">A co-pilot for SEBI-registered investment advisers. It profiles risk, builds goal-based mutual fund plans, screens direct-plan funds, cites the documents behind every answer, and checks suitability. You approve every plan before the client sees it.</p>
+      <div class="ctas rise d4">
+        <a class="btn ghost" href="#how">See how it works</a>
+      </div>
+    </header>
+
+    <section class="stats reveal" id="stats" hidden aria-label="Live figures from this workspace">
+      <div class="stat"><b data-k="funds">–</b><span>Funds screened</span></div>
+      <div class="stat"><b data-k="docs">–</b><span>Source documents</span></div>
+      <div class="stat"><b data-k="pages">–</b><span>Pages indexed</span></div>
+      <div class="stat"><b data-k="cases">–</b><span>Client cases</span></div>
+    </section>
+
+    <section class="section reveal" id="how">
+      <p class="eyebrow caps">Six screens · one case</p>
+      <h2>Every client moves through the same <span class="gold-text">honeycomb</span>.</h2>
+      <p class="intro">Enter the client once. Each screen builds on the one before it, and you can jump back to any of them while the case is open.</p>
+      <div class="comb">
+        <svg viewBox="-190 -180 380 360" aria-hidden="true" id="combSvg"></svg>
+        <ol class="steps-list" id="stepsList">
+          <li data-i="0"><b><i>I</i>Client onboarding</b><span>Income, expenses, EMIs, savings and goals, captured once.</span></li>
+          <li data-i="1"><b><i>II</i>Risk profile</b><span>Risk capacity and risk tolerance scored separately, with the reasoning shown.</span></li>
+          <li data-i="2"><b><i>III</i>Financial planning</b><span>Goal-based allocations with a glide path, Monte Carlo odds and stress tests.</span></li>
+          <li data-i="3"><b><i>IV</i>Fund research</b><span>Direct-plan funds screened and ranked, then backtested over ten years.</span></li>
+          <li data-i="4"><b><i>V</i>Research &amp; documents</b><span>Ask questions and get answers cited to the page in factsheets and circulars.</span></li>
+          <li data-i="5"><b><i>VI</i>Adviser review</b><span>Guardrail results, the audit trail, and the approve or reject decision.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section reveal">
+      <div class="gate">
+        <p class="eyebrow caps">The integration principle</p>
+        <blockquote>“Nothing reaches the client until <span class="gold-text">the adviser approves it.</span>”</blockquote>
+        <div class="thread" id="thread">
+          <div class="node"><i></i>Profile in</div>
+          <div class="node"><i></i>Suitability</div>
+          <div class="node"><i></i>Goal plan</div>
+          <div class="node"><i></i>Funds &amp; backtest</div>
+          <div class="node"><i></i>Guardrails</div>
+          <div class="node"><i></i>Draft</div>
+          <div class="node key"><i></i>Your approval</div>
+          <div class="node"><i></i>Client output</div>
+        </div>
+        <p class="note">The AI drafts and you decide. Every figure comes from the planning engines or the source documents, and every decision is written to the audit log.</p>
+      </div>
+    </section>
+
+    <section class="section reveal">
+      <p class="eyebrow caps">Why advisers trust it</p>
+      <h2>Built to be checked, not taken on faith.</h2>
+      <p class="intro">Each output shows where its numbers came from.</p>
+      <div class="pillars">
+        <article class="pillar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h11l5 5v11H4z" /><path d="M15 4v5h5M8 13h8M8 17h5" /></svg>
+          <h3>Cited to the page</h3>
+          <p>Research answers link to the exact page of the factsheet, offer document or circular they came from.</p>
+        </article>
+        <article class="pillar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z" /><path d="M8.5 12l2.5 2.5 4.5-5" /></svg>
+          <h3>Suitability guardrails</h3>
+          <p>Plans that don't fit the client's risk profile are blocked. Overriding one requires a written justification.</p>
+        </article>
+        <article class="pillar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M6 16l4-5 3 3 5-7" /><circle cx="18" cy="7" r="1.6" /></svg>
+          <h3>Numbers that show their work</h3>
+          <p>Glide paths, Monte Carlo odds and ten-year backtests all come from the planning engines, not the language model.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <span class="caps">Fin Advisor · Trusted Guidance</span>
+      <span>A co-pilot for SEBI-registered investment advisers. Not investment advice to the public.</span>
+    </footer>
+  </div>
+
+  <script>
+    // Honeycomb: a core hexagon (the emblem) ringed by the six workflow screens.
+    const combSvg = document.getElementById('combSvg');
+    const items = [...document.querySelectorAll('#stepsList li')];
+    const numerals = ['I', 'II', 'III', 'IV', 'V', 'VI'];
+    const labels = [['Client', 'onboarding'], ['Risk', 'profile'], ['Financial', 'planning'], ['Fund', 'research'], ['Research &', 'documents'], ['Adviser', 'review']];
+    const R = 64, gap = 6;
+    const hex = (cx, cy, r) => Array.from({ length: 6 }, (_, k) => {
+      const a = Math.PI / 180 * (60 * k - 90);
+      return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+    }).join(' ');
+    const ns = 'http://www.w3.org/2000/svg';
+    const make = (tag, attrs, parent) => { const n = document.createElementNS(ns, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); parent.appendChild(n); return n; };
+
+    const core = make('g', { class: 'cell core' }, combSvg);
+    make('polygon', { points: hex(0, 0, R - gap) }, core);
+    make('image', { href: '/favicon.svg', x: -34, y: -34, width: 68, height: 68 }, core);
+
+    const cells = labels.map(([a, b], i) => {
+      const ang = Math.PI / 180 * (60 * i - 60);  // start upper-right, go clockwise
+      const d = Math.sqrt(3) * R;
+      const cx = d * Math.cos(ang), cy = d * Math.sin(ang);
+      const g = make('g', { class: 'cell' }, combSvg);
+      make('polygon', { points: hex(cx, cy, R - gap) }, g);
+      make('text', { class: 'n', x: cx, y: cy - 8 }, g).textContent = numerals[i];
+      make('text', { x: cx, y: cy + 14 }, g).textContent = a;
+      make('text', { x: cx, y: cy + 30 }, g).textContent = b;
+      return g;
+    });
+
+    let active = 0, paused = false;
+    const light = (i) => {
+      active = i;
+      cells.forEach((c, j) => c.classList.toggle('on', j === i));
+      items.forEach((li, j) => li.classList.toggle('on', j === i));
+    };
+    [...cells, ...items].forEach((el) => {
+      const i = cells.includes(el) ? cells.indexOf(el) : +el.dataset.i;
+      el.addEventListener('mouseenter', () => { paused = true; light(i); });
+      el.addEventListener('mouseleave', () => { paused = false; });
+    });
+    light(0);
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduced) setInterval(() => { if (!paused) light((active + 1) % 6); }, 2600);
+
+    // Scroll reveals, plus the approval thread that fills node by node.
+    const thread = document.getElementById('thread');
+    const nodes = [...thread.querySelectorAll('.node')];
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        e.target.classList.add('in');
+        if (e.target.contains(thread)) {
+          thread.style.setProperty('--p', 1);
+          nodes.forEach((n, i) => setTimeout(() => n.classList.add('lit'), reduced ? 0 : 250 + i * 290));
+        }
+        io.unobserve(e.target);
+      }
+    }, { threshold: 0.2 });
+    document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+    // Live figures from this workspace; the strip stays hidden if the API is unreachable.
+    const countUp = (el, to) => {
+      if (reduced) { el.textContent = to.toLocaleString('en-IN'); return; }
+      const t0 = performance.now(), dur = 1400;
+      const step = (t) => {
+        const p = Math.min(1, (t - t0) / dur);
+        el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))).toLocaleString('en-IN');
+        if (p < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    };
+    fetch('/api/public-stats').then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((figures) => {
+        const strip = document.getElementById('stats');
+        // The client-case count is only sent to a signed-in adviser.
+        if (figures.cases == null) { strip.querySelector('b[data-k="cases"]').parentElement.remove(); strip.classList.add('three'); }
+        strip.hidden = false;
+        io.observe(strip);
+        strip.querySelectorAll('b[data-k]').forEach((b) => countUp(b, figures[b.dataset.k]));
+      })
+      .catch(() => {});
+
+    // Account icon: sign-in when signed out; the adviser's initials (opening the co-pilot) when signed in.
+    fetch('/api/auth/me').then((r) => r.json()).then(({ adviser }) => {
+      if (!adviser) return;
+      const a = document.getElementById('account');
+      const initials = adviser.name.split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || adviser.name[0].toUpperCase();
+      a.href = '/app.html#/onboard';
+      a.classList.add('in');
+      a.title = `Signed in as ${adviser.name} · open the co-pilot`;
+      a.setAttribute('aria-label', a.title);
+      a.querySelector('svg').style.display = 'none';
+      const s = a.querySelector('.initials'); s.textContent = initials; s.hidden = false;
+    }).catch(() => {});
+  </script>
+  <script src="/fintel.js" data-theme="dark" defer></script>
+</body>
+</html>
