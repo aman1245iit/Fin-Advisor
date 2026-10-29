@@ -1,0 +1,10 @@
+{
+  "builds": [
+    {
+      "src": "src/server.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": ["data/**", "public/**"] }
+    }
+  ],
+  "routes": [{ "src": "/(.*)", "dest": "src/server.js" }]
+}
