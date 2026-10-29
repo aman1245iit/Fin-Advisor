@@ -23,7 +23,6 @@
       <div class="nav-links">
         <a href="/about.html">About</a>
         <a href="/contact.html">Contact</a>
-        <a href="/login.html">Sign in</a>
       </div>
     </nav>
 
@@ -56,19 +55,17 @@
         <h2 id="who">1. Who this covers</h2>
         <p>Fin Advisor is a software co-pilot used by SEBI-registered Investment Advisers ("advisers"). This policy covers:</p>
         <ul>
-          <li><strong>Advisers</strong> who create an account and use the co-pilot; and</li>
+          <li><strong>Advisers</strong> who use the co-pilot; and</li>
           <li><strong>Visitors</strong> to the public pages, including people who send a message through the contact form.</li>
         </ul>
-        <div class="callout"><p>Visitors can't add client data. Clients are added only by a signed-in adviser inside the co-pilot, and <strong>the adviser decides why and how that data is used</strong>, under the Digital Personal Data Protection Act, 2023 and SEBI (Investment Advisers) Regulations, 2013. Fin Advisor processes it only on the adviser's behalf.</p></div>
+        <div class="callout"><p>Clients are added by an adviser inside the co-pilot, and <strong>the adviser decides why and how that data is used</strong>, under the Digital Personal Data Protection Act, 2023 and SEBI (Investment Advisers) Regulations, 2013. Fin Advisor processes it only on the adviser's behalf.</p></div>
 
         <h2 id="collect">2. What we collect</h2>
-        <h3>Adviser accounts</h3>
+        <h3>Adviser details</h3>
         <ul>
-          <li>Name, email address and password. Passwords are stored only as salted scrypt hashes, never in readable form.</li>
-          <li>An optional SEBI registration number, used to sign approvals.</li>
-          <li>Sign-in records: session tokens, failed sign-in attempts and password-reset requests.</li>
+          <li>The name and optional SEBI registration number an adviser enters to sign approvals. There are no accounts or passwords.</li>
         </ul>
-        <h3>Data advisers add after signing in</h3>
+        <h3>Data advisers add in the co-pilot</h3>
         <ul>
           <li>The client cases an adviser creates in the co-pilot, with the plans and decisions made for them, kept in an audit log. Nothing is collected about clients on the public pages.</li>
         </ul>
@@ -83,16 +80,15 @@
         </ul>
         <h3>Technical data</h3>
         <ul>
-          <li>IP addresses, used briefly to limit repeated sign-in, contact and help-assistant requests. We don't use analytics or advertising trackers.</li>
+          <li>IP addresses, used briefly to limit repeated contact and help-assistant requests. We don't use analytics or advertising trackers.</li>
         </ul>
 
         <h2 id="use">3. How we use it</h2>
         <ul>
-          <li>To run the service: sign advisers in, build risk profiles, plans and fund shortlists, answer research questions, and run suitability checks.</li>
+          <li>To run the service: build risk profiles, plans and fund shortlists, answer research questions, and run suitability checks.</li>
           <li>To produce client reports, but only after an adviser approves a plan and chooses to share it.</li>
           <li>To keep an audit trail of drafts, overrides and approvals, as advisers are required to keep records.</li>
-          <li>To keep the service secure, for example by locking an email after repeated failed sign-ins.</li>
-          <li>To send service emails such as password-reset links, and to reply to messages sent through the contact form.</li>
+          <li>To reply to messages sent through the contact form.</li>
         </ul>
         <p>We do not sell personal data, use it for advertising, or use client data to train AI models.</p>
 
@@ -103,24 +99,23 @@
         <h2 id="share">5. Who we share it with</h2>
         <ul>
           <li><strong>AI providers</strong>, as described above.</li>
-          <li><strong>Email providers</strong> (the SMTP service configured for the workspace) to deliver password-reset emails and contact-form messages.</li>
+          <li><strong>Email providers</strong> (the SMTP service configured for the workspace) to deliver contact-form messages.</li>
           <li><strong>Font hosting:</strong> pages load fonts from Google Fonts, so your browser sends your IP address to Google when a page loads.</li>
           <li><strong>People an adviser chooses</strong> to share an approved report with, through a private link.</li>
           <li><strong>Authorities</strong>, when the law, a regulator or a court requires it.</li>
         </ul>
 
         <h2 id="cookies">6. Cookies and browser storage</h2>
-        <p>We use one essential cookie, <code>fa_session</code>, to keep advisers signed in. It is HttpOnly, lasts 7 days and is removed when you sign out. The co-pilot also saves preferences such as the theme in your browser's local storage. We use no tracking or advertising cookies.</p>
+        <p>We use no cookies. The co-pilot saves preferences such as the theme and the signing name in your browser's local storage. We use no tracking or advertising cookies.</p>
 
         <h2 id="keep">7. How long we keep it</h2>
         <ul>
-          <li>Account and case data are kept while the adviser's account is active, and afterwards for as long as the adviser's record-keeping duties under SEBI regulations require (currently at least five years).</li>
-          <li>Sessions expire after 7 days. Password-reset links expire after 30 minutes.</li>
+          <li>Case data are kept while the adviser uses the service, and afterwards for as long as the adviser's record-keeping duties under SEBI regulations require (currently at least five years).</li>
           <li>Contact-form messages are kept only as long as needed to deal with them.</li>
         </ul>
 
         <h2 id="security">8. Security</h2>
-        <p>Passwords are hashed with scrypt, and reset tokens are stored only as SHA-256 hashes. Sessions use HttpOnly cookies. The co-pilot, its data and uploaded documents require sign-in. Client report links use long random tokens and work only for approved plans. No system is completely secure. If we learn of a breach affecting your data, we will tell the affected advisers and the Data Protection Board of India as the law requires.</p>
+        <p>The co-pilot has no sign-in, so its cases and uploaded documents can be opened by anyone who has the address of the site. Client report links use long random tokens and work only for approved plans. No system is completely secure. If we learn of a breach affecting your data, we will tell the affected advisers and the Data Protection Board of India as the law requires.</p>
 
         <h2 id="rights">9. Your rights</h2>
         <p>Under the Digital Personal Data Protection Act, 2023 you may ask to see a summary of your personal data, have it corrected or completed, have it erased where the law doesn't require us to keep it, withdraw consent, and nominate someone to act for you. Send them to us through the <a href="/contact.html">contact page</a>.</p>

@@ -8,8 +8,7 @@
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "data:nav": "node scripts/fetch-nav.mjs --refresh",
     "data:docs": "node scripts/extract-docs.mjs",
-    "data:meta": "node scripts/extract-meta.mjs",
-    "reset-password": "node --env-file-if-exists=.env scripts/reset-password.mjs"
+    "data:meta": "node scripts/extract-meta.mjs"
   },
   "repository": {
     "type": "git",

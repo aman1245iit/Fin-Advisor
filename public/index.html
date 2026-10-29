@@ -64,14 +64,6 @@
     .mini img { width: 34px; height: 34px; border-radius: 8px; }
     .mini span { font-size: 13px; }
     .nav-actions { display: flex; align-items: center; gap: 10px; }
-    .account {
-      width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--gold); color: var(--gold); text-decoration: none;
-      display: grid; place-items: center; transition: background .2s, transform .2s; flex: none;
-    }
-    .account:hover { background: rgba(217, 192, 143, .1); transform: translateY(-1px); }
-    .account svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; }
-    .account .initials { font-family: Cinzel, Georgia, serif; font-size: 14px; font-weight: 600; letter-spacing: .04em; }
-    .account.in { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--wine-deep); }
     .btn {
       display: inline-flex; align-items: center; gap: 10px; text-decoration: none; cursor: pointer;
       border-radius: 999px; padding: 12px 22px; font-weight: 600; font-size: 15px; border: 1px solid var(--gold);
@@ -214,10 +206,6 @@
       </a>
       <div class="nav-actions">
         <a class="btn ghost small" href="/app.html#/onboard">Open co-pilot</a>
-        <a class="account" id="account" href="/login.html" title="Adviser sign-in" aria-label="Adviser sign-in">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></svg>
-          <span class="initials" hidden></span>
-        </a>
       </div>
     </nav>
 
@@ -410,18 +398,6 @@
       })
       .catch(() => {});
 
-    // Account icon: sign-in when signed out; the adviser's initials (opening the co-pilot) when signed in.
-    fetch('/api/auth/me').then((r) => r.json()).then(({ adviser }) => {
-      if (!adviser) return;
-      const a = document.getElementById('account');
-      const initials = adviser.name.split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || adviser.name[0].toUpperCase();
-      a.href = '/app.html#/onboard';
-      a.classList.add('in');
-      a.title = `Signed in as ${adviser.name} · open the co-pilot`;
-      a.setAttribute('aria-label', a.title);
-      a.querySelector('svg').style.display = 'none';
-      const s = a.querySelector('.initials'); s.textContent = initials; s.hidden = false;
-    }).catch(() => {});
   </script>
   <script src="/fintel.js" data-theme="dark" defer></script>
 </body>

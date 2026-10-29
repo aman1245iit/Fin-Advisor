@@ -20,7 +20,7 @@ function localUrl() {
   fs.mkdirSync(dir, { recursive: true });
   return pathToFileURL(path.join(dir, 'copilot.db')).href;
 }
-if (!dbRemote && process.env.VERCEL) console.warn('TURSO_DATABASE_URL is not set: data is kept in /tmp and will be lost. Accounts and reset links will not work reliably.');
+if (!dbRemote && process.env.VERCEL) console.warn('TURSO_DATABASE_URL is not set: data is kept in /tmp and will be lost.');
 
 const client = createClient(dbRemote
   ? { url: remoteUrl, authToken: (process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || '').trim() || undefined }

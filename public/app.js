@@ -34,7 +34,7 @@ const SCREENS = [
 ];
 const PIPELINE = ['Client profile submitted', 'Risk & suitability checks', 'Goal-based plan', 'Fund research & backtest', 'Guardrail validation', 'Draft on adviser dashboard', 'Adviser review', 'Approve / reject', 'Client output released'];
 
-const state = { meta: null, me: null, cases: [], view: null, chat: [], screen: 'onboard', formDraft: null, option: 'recommended', docFilter: 'all', docSearch: null };
+const state = { meta: null, cases: [], view: null, chat: [], screen: 'onboard', formDraft: null, option: 'recommended', docFilter: 'all', docSearch: null };
 
 // Per-browser preferences (theme, approval signature, start screen); storage may be unavailable.
 const pref = {
@@ -42,12 +42,9 @@ const pref = {
   set: (k, v) => { try { if (v == null || v === '') localStorage.removeItem(k); else localStorage.setItem(k, v); } catch {} },
 };
 
-const toSignIn = () => location.replace(`/login.html?next=${encodeURIComponent(location.pathname + location.hash)}`);
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
   const j = await r.json().catch(() => ({}));
-  // Session expired or signed out elsewhere (sign-in errors from Settings forms are 401s too, without signIn).
-  if (r.status === 401 && j.signIn) { toSignIn(); throw new Error('Please sign in.'); }
   if (!r.ok) throw Object.assign(new Error(j.error || (j.errors || []).join('; ') || r.statusText), { data: j, status: r.status });
   return j;
 }
@@ -212,7 +209,7 @@ function renderOnboard(el) {
     const client = readForm();
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Working…';
     try {
-      const v = editing ? await api(`/api/cases/${state.view.id}`, { method: 'PUT', body: { client } }) : await api('/api/cases', { method: 'POST', body: { client } });
+      const v = editing ? await api(`/api/cases/${state.view.id}`, { method: 'PUT', body: { client, adviser: signName() } }) : await api('/api/cases', { method: 'POST', body: { client, adviser: signName() } });
       state.view = v; state.formDraft = null; state.chat = await api(`/api/cases/${v.id}/research`);
       await refreshCases();
       toast(`Draft v${v.draft.version} generated and sent to the adviser dashboard`);
@@ -790,9 +787,10 @@ async function ask(q) {
 }
 
 // ---------- Screen 6: Review ----------
-// Decisions are signed by the signed-in account (set on the server). The adviser can add their SEBI
-// registration number, kept on this device; older versions kept it inside a free-text signature.
+// Decisions are signed with the name set in Settings, plus an optional SEBI registration number,
+// both kept on this device; older versions kept the number inside a free-text signature.
 const sebiReg = () => pref.get('sebiReg') ?? (pref.get('adviserName') ?? '').toUpperCase().match(/IN[A-Z]\d{9}/)?.[0] ?? '';
+const signName = () => pref.get('signName') ?? '';
 function renderReview(el) {
   const v = state.view, d = v.draft;
   const pending = d.status === 'PENDING_REVIEW';
@@ -815,7 +813,7 @@ function renderReview(el) {
 
   <div class="card" style="margin-top:16px"><h3>Decision</h3>
     <div class="fields">
-      <label class="f">SEBI registration no. (optional)<input id="sebiReg" value="${esc(sebiReg())}" placeholder="e.g. INA000012345" autocomplete="off" spellcheck="false"><span class="small muted">Signed as ${esc(state.me?.name ?? '')}, the account you are signed in with.</span></label>
+      <label class="f">SEBI registration no. (optional)<input id="sebiReg" value="${esc(sebiReg())}" placeholder="e.g. INA000012345" autocomplete="off" spellcheck="false"><span class="small muted">Signed as ${esc(signName() || 'Adviser')}. Change your name in Settings.</span></label>
       <label class="f wide">Decision note / reason<textarea id="reviewNote" placeholder="Required for reject or request changes"></textarea></label>
     </div>
     <div class="row" style="margin-top:12px">
@@ -865,7 +863,7 @@ async function review(action) {
   const registration = $('#sebiReg').value.trim().toUpperCase();
   const justifications = Object.fromEntries($$('[data-justify]').map((t) => [t.dataset.justify, t.value]));
   try {
-    state.view = await api(`/api/cases/${state.view.id}/review`, { method: 'POST', body: { action, registration, note: $('#reviewNote').value, justifications } });
+    state.view = await api(`/api/cases/${state.view.id}/review`, { method: 'POST', body: { action, adviser: signName(), registration, note: $('#reviewNote').value, justifications } });
     state.justify = {};
     await refreshCases();
     toast({ approve: 'Approved – client report released', reject: 'Draft rejected', request_changes: 'Changes requested' }[action]);
@@ -878,7 +876,7 @@ async function review(action) {
 async function resubmit() {
   const overrides = Object.fromEntries($$('[data-override]').map((s) => [s.dataset.override, +s.value]));
   try {
-    state.view = await api(`/api/cases/${state.view.id}`, { method: 'PUT', body: { overrides, adviserNotes: $('#adviserNotes').value } });
+    state.view = await api(`/api/cases/${state.view.id}`, { method: 'PUT', body: { overrides, adviserNotes: $('#adviserNotes').value, adviser: signName() } });
     await refreshCases();
     toast(`Resubmitted as draft v${state.view.draft.version}`);
     renderReview($('#app'));
@@ -898,20 +896,20 @@ window.addEventListener('hashchange', () => {
   route();
 });
 
-// ---------- Settings: appearance, approvals, start screen, workspace status, sign out ----------
+// ---------- Settings: appearance, approvals, start screen, workspace status ----------
 const initialsOf = (name = '') => name.split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || name.slice(0, 1).toUpperCase();
 const segHtml = (name, current, options) => `<div class="seg" role="group" aria-label="${esc(name)}">${options.map(([v, label]) => `<button type="button" data-${name}="${v}" aria-pressed="${current === v}">${label}</button>`).join('')}</div>`;
 
 function openSettings() {
   let dlg = $('#settingsDialog');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'settingsDialog'; dlg.setAttribute('aria-labelledby', 'settingsTitle'); document.body.append(dlg); }
-  const me = state.me, m = state.meta ?? {};
+  const name = signName() || 'Adviser', m = state.meta ?? {};
   const docs = m.corpus?.documents ?? [];
   const theme = pref.get('theme') ?? 'system';
   const start = pref.get('startScreen') ?? 'onboard';
   dlg.innerHTML = `
     <div class="settings-head">
-      <div class="settings-who"><span class="avatar" aria-hidden="true">${esc(initialsOf(me.name))}</span><div><b id="settingsTitle">${esc(me.name)}</b><span>${esc(me.email)}</span></div></div>
+      <div class="settings-who"><span class="avatar" aria-hidden="true">${esc(initialsOf(name))}</span><div><b id="settingsTitle">Settings</b><span>${esc(name)}</span></div></div>
       <button class="btn small" data-close aria-label="Close settings">✕</button>
     </div>
     <div class="settings-body">
@@ -920,7 +918,11 @@ function openSettings() {
         ${segHtml('theme', theme, [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']])}
       </section>
       <section class="set col">
-        <div><h4>SEBI registration number</h4><p class="hint">Approvals are signed as ${esc(me.name)}. This number is shown next to your name on approvals and client reports.</p></div>
+        <div><h4>Your name</h4><p class="hint">Approvals, rejections and resubmissions are signed with this name on this device.</p></div>
+        <input id="setName" value="${esc(signName())}" placeholder="e.g. Anita Sharma" maxlength="100" autocomplete="name">
+      </section>
+      <section class="set col">
+        <div><h4>SEBI registration number</h4><p class="hint">Shown next to your name on approvals and client reports.</p></div>
         <input id="setSignature" value="${esc(sebiReg())}" placeholder="e.g. INA000012345" autocomplete="off" spellcheck="false">
       </section>
       <section class="set">
@@ -935,7 +937,6 @@ function openSettings() {
           <dt>Client cases</dt><dd>${state.cases.length}</dd>
         </dl>
       </section>
-      <div class="settings-foot"><span class="hint">Signed in as ${esc(me.email)}</span><button class="btn danger-btn" id="signOut">Sign out</button></div>
     </div>`;
 
   dlg.querySelectorAll('[data-theme]').forEach((b) => b.addEventListener('click', () => {
@@ -949,6 +950,16 @@ function openSettings() {
     pref.set('startScreen', b.dataset.start === 'onboard' ? null : b.dataset.start);
     dlg.querySelectorAll('[data-start]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
   }));
+  $('#setName', dlg).addEventListener('change', (e) => {
+    e.target.value = e.target.value.trim();
+    pref.set('signName', e.target.value);
+    const n = e.target.value || 'Adviser';
+    $('.settings-who .avatar', dlg).textContent = initialsOf(n);
+    $('.settings-who span:not(.avatar)', dlg).textContent = n;
+    renderAccount();
+    if (state.screen === 'review') render(); // "Signed as" on the review screen
+    toast('Name saved');
+  });
   $('#setSignature', dlg).addEventListener('change', (e) => {
     const reg = e.target.value.trim().toUpperCase();
     if (reg && !/^IN[A-Z]\d{9}$/.test(reg)) return toast('SEBI registration number should look like INA000012345.', true);
@@ -959,21 +970,15 @@ function openSettings() {
     toast('SEBI registration number saved');
   });
   $('[data-close]', dlg).addEventListener('click', () => dlg.close());
-  $('#signOut', dlg).addEventListener('click', async () => {
-    try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
-    location.replace('/');
-  });
   dlg.showModal();
 }
 function renderAccount() {
   const b = $('#settingsBtn');
-  b.title = `Settings · signed in as ${state.me.name}`;
+  b.title = `Settings · signing as ${signName() || 'Adviser'}`;
   b.setAttribute('aria-label', b.title);
 }
 $('#settingsBtn').addEventListener('click', openSettings);
 
-state.me = (await api('/api/auth/me')).adviser;
-if (!state.me) { toSignIn(); await new Promise(() => {}); } // stop here while the sign-in page loads
 renderAccount();
 state.meta = await api('/api/meta');
 await refreshCases();
