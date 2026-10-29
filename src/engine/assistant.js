@@ -199,8 +199,8 @@ function caseSummary(d) {
   const lines = [
     `Client: ${c.name}, age ${c.age}${c.location ? `, ${c.location}` : ''}${c.employmentStatus ? `, ${c.employmentStatus.replace('_', ' ')}` : ''}. Monthly income ${inr(r.financials.income)}, expenses ${inr(r.financials.expenses)}, EMIs ${inr(r.financials.emi)}, surplus ${inr(r.financials.surplus)}. Emergency cover ${r.financials.emergencyMonths.toFixed(1)} months. Dependants ${c.dependants || 0}.`,
     `Risk: capacity ${r.capacity.level} (${r.capacity.score}/100), tolerance ${r.tolerance.level} (${r.tolerance.score}/15), proposed ${r.final.level}. ${r.reasons.join(' ')}`,
-    ...(d.plan.investRange ? [`Recommended investment (worked out by the co-pilot from the finances): ${investRangeText(d.plan.investRange)}. ${d.plan.investRange.basis.join(' ')}`] : []),
-    `Total recommended SIP ${inr(d.plan.totalSip)} per month. Starting mix: ${Object.entries(d.plan.combinedAllocation).map(([k, v]) => `${SLEEVES[k].label} ${v}%`).join(', ')}.`,
+    ...(d.plan.investRange ? [`HOW MUCH THE CLIENT SHOULD INVEST (the co-pilot's recommendation; answer "how much to invest" with this): ${investRangeText(d.plan.investRange)}. Reasons: ${d.plan.investRange.basis.join(' ')}`] : []),
+    `SIP the goals would need in full (not the recommendation when it exceeds what is affordable): ${inr(d.plan.totalSip)} per month. Starting mix: ${Object.entries(d.plan.combinedAllocation).map(([k, v]) => `${SLEEVES[k].label} ${v}%`).join(', ')}.`,
     ...d.plan.goals.map((g) => `Goal "${g.name}" (${g.typeLabel}, ${g.years} years): future cost ${inr(g.futureCost)}, recommended SIP ${inr(g.recommendedSip)}, starting equity ${g.currentAllocation.equity}%, chance of reaching target ${(g.monteCarlo.successProb * 100).toFixed(0)}%, SIP for 80% confidence ${inr(g.monteCarlo.sipFor[80])}. De-risking: ${g.derisk.phases.map((p) => `${p.label} years ${p.from}–${p.to}`).join('; ')}.`),
     ...d.funds.map((s) => `Sleeve ${s.label} (${s.weight}%): ${s.selected ? `${s.selected.name}${s.overridden ? ' (adviser override)' : ''}. ${s.selected.explanation ?? ''}` : 'no eligible fund'}${s.eligible.length > 1 ? ` Other eligible: ${s.eligible.filter((f) => f.code !== s.selected?.code).map((f) => f.name).join(', ')}.` : ''}`),
     ...(d.investOptions ?? []).filter((o) => !o.sameAs).map((o) => `Option "${o.title}": ${o.fundCount} funds, weighted TER ${o.ter.toFixed(2)}%${o.history ? `, 10-year backtest CAGR ${pc(o.history.cagr)}, max drawdown ${pc(o.history.maxDrawdown)}` : ''}. Funds: ${o.sleeves.map((s) => s.fund).filter(Boolean).join(', ')}.`),
@@ -543,7 +543,7 @@ async function researchWithModel(question, { draft, contextCodes, history, chose
 
     // Some models cite as 【S1】 or [S1, S3]; normalise to [S1][S3] so the UI can link them.
     const text = response.text
-      .replace(/[【［]\s*(S\d+(?:\s*[,，]\s*S\d+)*)\s*[】］]/g, '[$1]')
+      .replace(/[【［[]\s*(S\d+(?:\s*[,，]\s*S\d+)*)\s*[】］\]]/g, '[$1]')
       .replace(/\[(S\d+(?:\s*,\s*S\d+)+)\]/g, (_, ids) => ids.split(/\s*,\s*/).map((id) => `[${id}]`).join(''));
     if (response.stop === 'max_tokens' && !text) throw new Error('The answer was cut off.');
     const bad = unsupportedNumbers(text, evidence);
