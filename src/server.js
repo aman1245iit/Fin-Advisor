@@ -1,7 +1,7 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
 import express from 'express';
-import { db, audit, now, dbRemote } from './db.js';
+import { db, audit, now, dbRemote, remoteUrl } from './db.js';
 import { runPipeline } from './engine/pipeline.js';
 import { corpusStats, searchDocuments, pageText, addDocument, removeDocument } from './engine/rag.js';
 import { assistantAnswer, llmEnabled, providers } from './engine/assistant.js';
@@ -374,7 +374,7 @@ if (!process.env.VERCEL) {
     if (ai) console.log(`AI assistant: ${ai.label}, model ${ai.model}`);
     else if (process.env.FREE_AI_API_KEY?.trim()) console.warn('AI assistant OFF: FREE_AI_API_KEY is set but its provider is not recognised. Set FREE_AI_PROVIDER, or FREE_AI_BASE_URL and FREE_AI_MODEL, in .env.');
     else console.log('AI assistant off (no key in .env); research uses document search.');
-    console.log(dbRemote ? `Database: hosted (${new URL(process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL).host})` : 'Database: local file');
+    console.log(dbRemote ? `Database: hosted (${new URL(remoteUrl).host})` : 'Database: local file');
     console.log(mailConfigured()
       ? `Password-reset emails: sent via ${process.env.SMTP_HOST.trim()}`
       : 'Password-reset emails: SMTP not set up in .env, so reset links are printed here instead of emailed.');

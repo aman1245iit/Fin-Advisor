@@ -88,6 +88,7 @@
   <main>
     <div class="card">
       <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></svg></div>
+      <p class="msg err" id="notSaved" role="alert" style="margin-bottom:16px" hidden>Accounts are not being saved on this server: no hosted database is connected, so sign-in can fail even with the right password. The site owner needs to set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN on Vercel and redeploy.</p>
 
       <!-- Sign in -->
       <section id="v-login" hidden>
@@ -99,13 +100,13 @@
           <label>Password<span class="pw"><input name="password" type="password" autocomplete="current-password" required><button type="button" class="show">Show</button></span></label>
           <button class="btn">Sign in</button>
         </form>
-        <div class="links"><button type="button" data-view="forgot">Forgot password?</button><button type="button" data-view="signup" id="toSignup" hidden>Create the first account</button></div>
+        <div class="links"><button type="button" data-view="forgot">Forgot password?</button><button type="button" data-view="signup">New here? Create an account</button></div>
       </section>
 
-      <!-- Create account (first adviser of this workspace) -->
+      <!-- Create account -->
       <section id="v-signup" hidden>
         <h1>Create your account</h1>
-        <p class="lead">Set up the first adviser account for this workspace.</p>
+        <p class="lead">New to Fin Advisor? Create an adviser account to use the co-pilot.</p>
         <form id="f-signup" novalidate>
           <p class="msg err" role="alert" hidden></p>
           <label>Adviser name<input name="name" autocomplete="name" placeholder="e.g. A. Sharma" required></label>
@@ -165,10 +166,8 @@
     const resetToken = params.get('reset');
     if (resetToken) history.replaceState(null, '', location.pathname);
 
-    let canSignUp = false;
     function show(view) {
       for (const v of ['login', 'signup', 'forgot', 'reset']) $(`#v-${v}`).hidden = v !== view;
-      $('#toSignup').hidden = !canSignUp;
       const first = $(`#v-${view} input`);
       if (first) first.focus();
     }
@@ -223,8 +222,9 @@
     if (resetToken) show('reset');
     else fetch('/api/auth/me').then((r) => r.json()).then((me) => {
       if (me.adviser) return location.replace(next);
-      canSignUp = me.canSignUp;
-      show(params.get('view') === 'forgot' ? 'forgot' : canSignUp ? 'signup' : 'login');
+      $('#notSaved').hidden = me.persistent !== false;
+      const view = params.get('view');
+      show(['forgot', 'signup'].includes(view) ? view : me.hasAccounts ? 'login' : 'signup');
     }).catch(() => show('login'));
   </script>
   <script src="/fintel.js" data-theme="dark" defer></script>

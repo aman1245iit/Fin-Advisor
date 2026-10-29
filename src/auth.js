@@ -5,11 +5,10 @@
 // after 30 minutes (SMTP settings in .env; see mailer.js). An administrator on the server can
 // also run `npm run reset-password -- <email>`.
 //
-// The first account can be created by anyone (workspace set-up). After that, only a signed-in
-// adviser can add another adviser.
+// Anyone can create an account from the sign-in page; a signed-in adviser can also add others.
 import crypto from 'node:crypto';
 import express from 'express';
-import { db, ready, audit, now } from './db.js';
+import { db, ready, audit, now, dbPersistent } from './db.js';
 import { sendMail } from './mailer.js';
 
 export const COOKIE = 'fa_session';
@@ -127,7 +126,9 @@ async function startSession(res, adviserId, req) {
 }
 const clearCookie = (res) => res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 function tokenOf(req) {
-  const m = (req.headers.cookie ?? '').match(new RegExp(`(?:^|;\s*)${COOKIE}=([^;]+)`));
+  // \\s, not \s: inside a template string \s is just "s", which missed the cookie whenever
+  // another cookie came before it, and signed the adviser out.
+  const m = (req.headers.cookie ?? '').match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`));
   return m ? m[1] : null;
 }
 export async function sessionAdviser(req) {
@@ -184,15 +185,16 @@ const appUrl = () => (process.env.APP_URL?.trim() || `http://localhost:${+proces
 export const authRouter = express.Router();
 
 authRouter.get('/me', wrap(async (req, res) => {
-  res.json({ adviser: await sessionAdviser(req), canSignUp: (await adviserCount()) === 0 });
+  // hasAccounts picks the first view on the sign-in page; persistent is false when accounts
+  // cannot be kept (see db.js), so the page can say so instead of failing sign-in.
+  res.json({ adviser: await sessionAdviser(req), canSignUp: true, hasAccounts: (await adviserCount()) > 0, persistent: dbPersistent });
 }));
 
-// First account: open. Later accounts: only a signed-in adviser can add one (Settings).
+// Open to new advisers. A signed-in adviser adding someone else keeps their own session.
 authRouter.post('/signup', wrap(async (req, res) => {
   const current = await sessionAdviser(req);
-  if ((await adviserCount()) > 0 && !current) throw httpError(403, 'This workspace already has an adviser. Ask them to add you from Settings, or sign in.');
   const adviser = await createAdviser(req.body ?? {});
-  await audit(null, 'ADVISER_CREATED', { adviser: adviser.email, by: current?.email ?? 'self (first account)' });
+  await audit(null, 'ADVISER_CREATED', { adviser: adviser.email, by: current?.email ?? 'self' });
   if (!current) await startSession(res, adviser.id, req);
   res.status(201).json({ adviser });
 }));
@@ -202,7 +204,11 @@ authRouter.post('/login', wrap(async (req, res) => {
   loginLimit.check(req, email);
   const a = await byEmail(email);
   const ok = verifySecret(String(password ?? ''), a?.password_hash ?? DUMMY_HASH) && !!a;
-  if (!ok) { loginLimit.hit(req, email); throw httpError(401, 'Email or password is incorrect.'); }
+  if (!ok) {
+    loginLimit.hit(req, email);
+    if (!dbPersistent) throw httpError(503, 'Accounts are not being saved on this server (no hosted database is connected), so your account may be missing. Ask the site owner to set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.');
+    throw httpError(401, 'Email or password is incorrect.');
+  }
   loginLimit.clear(req, email);
   await startSession(res, a.id, req);
   await audit(null, 'ADVISER_SIGNED_IN', { adviser: a.email });

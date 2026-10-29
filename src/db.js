@@ -10,8 +10,18 @@ import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { createClient } from '@libsql/client';
 
-const remoteUrl = (process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || '').trim();
+// The Vercel Marketplace can add a custom prefix (e.g. STORAGE_TURSO_DATABASE_URL), so any name
+// ending in TURSO_DATABASE_URL / TURSO_AUTH_TOKEN is accepted.
+const envEnding = (...names) => {
+  for (const n of names) if (process.env[n]?.trim()) return process.env[n].trim();
+  const key = Object.keys(process.env).find((k) => names.some((n) => k.endsWith(`_${n}`)) && process.env[k]?.trim());
+  return key ? process.env[key].trim() : '';
+};
+export const remoteUrl = envEnding('TURSO_DATABASE_URL', 'LIBSQL_URL');
 export const dbRemote = Boolean(remoteUrl);
+// False on Vercel without a hosted database: each instance then has its own temporary copy, so
+// an account made on one instance is unknown to the next and sign-in fails.
+export const dbPersistent = dbRemote || !process.env.VERCEL;
 
 function localUrl() {
   if (process.env.DB_PATH) return pathToFileURL(path.resolve(process.env.DB_PATH)).href;
@@ -20,10 +30,10 @@ function localUrl() {
   fs.mkdirSync(dir, { recursive: true });
   return pathToFileURL(path.join(dir, 'copilot.db')).href;
 }
-if (!dbRemote && process.env.VERCEL) console.warn('TURSO_DATABASE_URL is not set: data is kept in /tmp and will be lost. Accounts and reset links will not work reliably.');
+if (!dbPersistent) console.warn('TURSO_DATABASE_URL is not set: data is kept in /tmp and will be lost. Accounts and reset links will not work reliably.');
 
 const client = createClient(dbRemote
-  ? { url: remoteUrl, authToken: (process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || '').trim() || undefined }
+  ? { url: remoteUrl, authToken: envEnding('TURSO_AUTH_TOKEN', 'LIBSQL_AUTH_TOKEN') || undefined }
   : { url: localUrl() });
 
 // Small promise API in the shape of node:sqlite's prepare().get/all/run.

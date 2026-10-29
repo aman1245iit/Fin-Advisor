@@ -60,9 +60,19 @@ test('accounts: sign-in required, settings, email reset link and limits', async 
   assert.equal(typeof (await raw('/api/public-stats')).json.cases, 'number', 'shown when signed in');
   assert.equal((await raw('/app.html')).status, 200, 'signed in');
 
-  // Only the first account is open sign-up; later ones need a signed-in adviser.
-  assert.equal((await raw('/api/auth/me', null, 'GET', '')).json.canSignUp, false);
-  assert.equal((await raw('/api/auth/signup', { name: 'Intruder', email: 'x@example.com', password: 'whatever-123' }, 'POST', '')).status, 403);
+  // The session cookie is found even when other cookies come before it (Vercel adds its own).
+  assert.equal((await raw('/api/cases', null, 'GET', `_vercel_jwt=abc; theme=dark; ${cookie}`)).status, 200);
+
+  // New advisers can sign up on their own; an email can only be used once.
+  const me = (await raw('/api/auth/me', null, 'GET', '')).json;
+  assert.equal(me.canSignUp, true);
+  assert.equal(me.hasAccounts, true);
+  assert.equal(me.persistent, true);
+  const newcomer = await raw('/api/auth/signup', { name: 'C. Iyer', email: 'c.iyer@example.com', password: 'newcomer-123' }, 'POST', '');
+  assert.equal(newcomer.status, 201);
+  assert.match(newcomer.cookie, /^fa_session=/, 'a new adviser is signed in straight away');
+  assert.equal((await raw('/api/cases', null, 'GET', newcomer.cookie)).status, 200);
+  assert.equal((await raw('/api/auth/signup', { name: 'Again', email: 'C.Iyer@example.com', password: 'another-123' }, 'POST', '')).status, 409);
   const added = await call('/api/auth/signup', { name: 'B. Rao', email: 'b.rao@example.com', password: 'second-pass-123' });
   assert.equal(added.status, 201);
   assert.equal(added.cookie, null, 'adding an adviser keeps your own session');
