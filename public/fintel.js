@@ -227,7 +227,8 @@
     const f = focused && focused.isConnected ? labelOf(focused).replace(/ \[section: .*\]$/, '') : '';
     const list = [];
     if (f) list.push(`What should I enter in "${f}"?`);
-    if (p === '/' || p.endsWith('index.html')) list.push('What does Fin Advisor do?', 'How do I get started?');
+    if (p.startsWith('/login')) list.push('How do I create an account?', 'I forgot my password', 'What are the password rules?');
+    else if (p === '/' || p.endsWith('index.html')) list.push('What does Fin Advisor do?', 'How do I get started?');
     else {
       const screen = clean(document.querySelector('#steps [aria-current="page"]')?.textContent).replace(/^\d+/, '');
       if (screen) list.push(`Explain the ${screen} screen`);

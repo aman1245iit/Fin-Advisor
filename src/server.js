@@ -1,7 +1,7 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
 import express from 'express';
-import { db, ready, audit, now, dbRemote } from './db.js';
+import { db, audit, now, dbRemote } from './db.js';
 import { runPipeline } from './engine/pipeline.js';
 import { corpusStats, searchDocuments, pageText, addDocument, removeDocument } from './engine/rag.js';
 import { assistantAnswer, llmEnabled, providers } from './engine/assistant.js';
@@ -12,26 +12,35 @@ import { CAPACITY_RULES, CAPACITY_BANDS, TOLERANCE_QUESTIONS, TOLERANCE_BANDS } 
 import { ASSET_ASSUMPTIONS, ASSET_VOLATILITY, GOAL_TYPES, EQUITY_STRESS_FALL, GLIDE_START, GLIDE_END } from './engine/planner.js';
 import { SPECIAL_REQUESTS } from './engine/guardrails.js';
 import { renderClientReport, renderBlocked } from './client-report.js';
+import { authRouter, authReady, requireAdviser, sessionAdviser } from './auth.js';
 import { mailConfigured, sendMail } from './mailer.js';
 
 const PUBLIC_DIR = path.resolve(import.meta.dirname, '..', 'public');
 const app = express();
+// Routes match exactly as written, so /API/cases cannot reach /api/cases past the sign-in check.
 app.set('case sensitive routing', true);
 app.use(express.json({ limit: '2mb' }));
 // Requests wait until the database tables exist (the first request after a cold start on Vercel).
-app.use((_req, _res, next) => ready.then(() => next(), next));
+app.use((_req, _res, next) => authReady.then(() => next(), next));
+app.use('/api/auth', authRouter);
 
-// There is no sign-in: the co-pilot, its data and uploaded documents are open to anyone with the URL.
+// Sign-in required for the co-pilot, its data and uploaded documents. Public: the front page,
+// the sign-in page, static assets, the fund and document statistics the front page shows, and
+// approved client reports (/client/<share token>), which the adviser shares with the client.
+// Fintel (the floating help assistant) is public so it can help on the sign-in page; it is rate-limited.
+// The contact form is public too, and limited per IP.
+const PUBLIC_API = new Set(['GET /api/funds', 'GET /api/docs', 'GET /api/public-stats', 'POST /api/fintel', 'POST /api/contact']);
 // The path as the file system sees it: decoded, lower-case (Windows ignores case) and without
-// trailing dots or spaces (Windows drops them).
+// trailing dots or spaces (Windows drops them), so /App.html, /%61pp.html and /app.html. are all
+// recognised as the co-pilot page.
 function guardPath(raw) {
   try { return decodeURIComponent(raw).toLowerCase().replace(/[.\s]+$/, ''); } catch { return null; }
 }
 app.use((req, res, next) => {
   const p = guardPath(req.path);
   if (p === null || p.includes(':') || p.includes('\\')) return res.status(400).json({ error: 'Bad request path.' });
-  // Old sign-in links and bookmarks go straight to the co-pilot.
-  if (p === '/login.html' || p === '/login') return res.redirect(302, '/app.html#/onboard');
+  if (p === '/app.html' || p === '/docs' || p.startsWith('/docs/')) return requireAdviser(req, res, next);
+  if ((p === '/api' || p.startsWith('/api/')) && !PUBLIC_API.has(`${req.method} ${p}`)) return requireAdviser(req, res, next);
   next();
 });
 app.use(express.static(PUBLIC_DIR, { caseSensitive: true }));
@@ -76,10 +85,8 @@ function validateClient(c) {
   return errors;
 }
 
-// The SEBI registration shown next to the adviser's name on an approval, e.g. INA000012345.
+// The SEBI registration shown next to the signed-in adviser's name on an approval, e.g. INA000012345.
 const SEBI_REG = /^IN[A-Z]\d{9}$/;
-// The name a submission, resubmission or decision is signed with, set by the adviser in Settings.
-const signer = (req) => String(req.body?.adviser ?? '').trim().slice(0, 100) || 'Adviser';
 const shareToken = () => crypto.randomBytes(24).toString('base64url');
 
 function diff(a = {}, b = {}, prefix = '') {
@@ -131,14 +138,15 @@ app.get('/api/meta', (_req, res) => {
 
 app.get('/api/funds', (_req, res) => res.json(allFunds()));
 
-// Counts for the front page (no client names).
-app.get('/api/public-stats', async (_req, res) => {
+// Counts for the public front page (no client names). Client cases are private: the count is
+// included only for a signed-in adviser, and left out for visitors.
+app.get('/api/public-stats', async (req, res) => {
   const docs = corpusStats().documents ?? [];
   res.json({
     funds: allFunds().length,
     docs: docs.length,
     pages: docs.reduce((s, d) => s + (d.pages || 0), 0),
-    cases: (await db.get('SELECT COUNT(*) AS n FROM cases')).n,
+    ...((await sessionAdviser(req)) ? { cases: (await db.get('SELECT COUNT(*) AS n FROM cases')).n } : {}),
   });
 });
 
@@ -152,7 +160,7 @@ app.post('/api/cases', async (req, res) => {
   if (errors.length) return res.status(400).json({ errors });
   const r = await db.run('INSERT INTO cases (client_name, client_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', client.name, JSON.stringify(client), 'DRAFT', now(), now());
   const id = r.lastInsertRowid;
-  await audit(id, 'CLIENT_PROFILE_SUBMITTED', { by: signer(req) });
+  await audit(id, 'CLIENT_PROFILE_SUBMITTED', { by: req.adviser.name, adviserId: req.adviser.id });
   await createDraft(id, client, { by: 'co-pilot' });
   res.status(201).json(await caseView(id));
 });
@@ -179,7 +187,7 @@ app.put('/api/cases/:id', async (req, res) => {
     ...diff(prevDraft?.overrides ?? {}, overrides, 'fundOverride.'),
     ...(adviserNotes !== (prevDraft?.adviserNotes ?? '') ? [{ field: 'adviserNotes', from: prevDraft?.adviserNotes ?? '', to: adviserNotes }] : []),
   ];
-  const by = signer(req);
+  const by = req.adviser.name; // the signed-in account, never a name sent by the browser
   if (prev?.status === 'APPROVED' && !changes.length) return res.status(409).json({ error: 'Draft already approved and nothing changed.' });
   await createDraft(id, client, { overrides, adviserNotes, by, changes });
   await audit(id, 'EDITED_AND_RESUBMITTED', { by, changes: changes.length });
@@ -193,9 +201,10 @@ app.post('/api/cases/:id/review', async (req, res) => {
   if (!d) return res.status(404).json({ error: 'no draft' });
   if (!['approve', 'reject', 'request_changes'].includes(action)) return res.status(400).json({ error: 'action must be approve, reject or request_changes' });
   if (typeof note !== 'string' || !justifications || typeof justifications !== 'object') return res.status(400).json({ error: 'Invalid note or justifications.' });
+  // The decision is signed by the signed-in account; the browser can only add a SEBI registration number.
   const registration = String(req.body.registration ?? '').trim().toUpperCase();
   if (registration && !SEBI_REG.test(registration)) return res.status(400).json({ error: 'SEBI registration number should look like INA000012345.' });
-  const adviser = registration ? `${signer(req)} · ${registration}` : signer(req);
+  const adviser = registration ? `${req.adviser.name} · ${registration}` : req.adviser.name;
   if (d.status !== 'PENDING_REVIEW') return res.status(409).json({ error: `Draft v${d.version} is ${d.status}; only a pending draft can be reviewed.` });
   const draft = JSON.parse(d.draft_json);
   if (action === 'approve') {
@@ -209,8 +218,8 @@ app.post('/api/cases/:id/review', async (req, res) => {
   const status = { approve: 'APPROVED', reject: 'REJECTED', request_changes: 'CHANGES_REQUESTED' }[action];
   await db.run('UPDATE drafts SET status = ?, share_token = ? WHERE id = ?', status, action === 'approve' ? shareToken() : null, d.id);
   await db.run('UPDATE cases SET status = ?, updated_at = ? WHERE id = ?', status, now(), id);
-  await db.run('INSERT INTO reviews (case_id, draft_id, action, adviser, adviser_id, note, justifications_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, d.id, action, adviser, null, note, JSON.stringify(justifications), now());
-  await audit(id, `DRAFT_${status}`, { version: d.version, adviser, note });
+  await db.run('INSERT INTO reviews (case_id, draft_id, action, adviser, adviser_id, note, justifications_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, d.id, action, adviser, req.adviser.id, note, JSON.stringify(justifications), now());
+  await audit(id, `DRAFT_${status}`, { version: d.version, adviser, adviserId: req.adviser.id, email: req.adviser.email, note });
   res.json(await caseView(id));
 });
 
@@ -235,14 +244,15 @@ app.post('/api/research', async (req, res) => {
   res.json(a);
 });
 
-// Fintel: form and page help on every page, limited per IP.
+// Fintel: form and page help on every page. Visitors get fewer questions than signed-in advisers.
 const FINTEL_WINDOW_MS = 10 * 60_000;
 const fintelHits = new Map();
 app.post('/api/fintel', async (req, res) => {
   const question = String(req.body.question ?? '').trim();
   if (!question) return res.status(400).json({ error: 'Type a question.' });
   if (!llmEnabled()) return res.status(503).json({ error: 'Fintel is not set up yet. Add FREE_AI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server.' });
-  const key = req.ip, max = 60;
+  const adviser = await sessionAdviser(req);
+  const key = adviser ? `a${adviser.id}` : `ip${req.ip}`, max = adviser ? 60 : 15;
   const h = fintelHits.get(key);
   if (!h || Date.now() - h.first >= FINTEL_WINDOW_MS) fintelHits.set(key, { count: 1, first: Date.now() });
   else if (++h.count > max) return res.status(429).json({ error: `You've asked a lot of questions in a short time. Try again in ${Math.ceil((FINTEL_WINDOW_MS - (Date.now() - h.first)) / 60_000)} minute(s).` });
@@ -357,7 +367,7 @@ export default app;
 
 const port = +process.env.PORT || 4400;
 if (!process.env.VERCEL) {
-  await ready;
+  await authReady;
   app.listen(port, () => {
     console.log(`Adviser co-pilot running at http://localhost:${port}`);
     const ai = providers()[0];
@@ -366,7 +376,7 @@ if (!process.env.VERCEL) {
     else console.log('AI assistant off (no key in .env); research uses document search.');
     console.log(dbRemote ? `Database: hosted (${new URL(process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL).host})` : 'Database: local file');
     console.log(mailConfigured()
-      ? `Contact-form emails: sent via ${process.env.SMTP_HOST.trim()}`
-      : 'Contact-form emails: SMTP not set up in .env, so messages are printed here instead of emailed.');
+      ? `Password-reset emails: sent via ${process.env.SMTP_HOST.trim()}`
+      : 'Password-reset emails: SMTP not set up in .env, so reset links are printed here instead of emailed.');
   });
 }

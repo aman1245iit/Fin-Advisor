@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fin Advisor — Adviser Sign-in</title>
+  <meta name="description" content="Sign in to the Fin Advisor co-pilot.">
+  <meta name="theme-color" content="#2a0e12">
+  <!-- Reset links carry a token in the URL; never send it to other sites. -->
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --wine: #2a0e12; --wine-deep: #1b080b; --wine-up: #3a161b;
+      --gold: #d9c08f; --gold-hi: #f3e4c0; --gold-lo: #9f7f52;
+      --cream: #efe6d6; --muted: #b9a693; --line: rgba(217, 192, 143, .18);
+      --err: #ff9b8f; --ok: #9ed8a0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh; background: var(--wine); color: var(--cream);
+      font: 15px/1.55 Inter, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased;
+      display: flex; flex-direction: column;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .55;
+      background:
+        radial-gradient(ellipse 70% 60% at 50% 30%, transparent 0, var(--wine) 85%),
+        linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 36px 36px,
+        linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 36px 36px;
+    }
+    a { color: var(--gold); }
+    .caps { font-family: Cinzel, Georgia, serif; letter-spacing: .32em; text-transform: uppercase; }
+    nav { max-width: 1120px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+    .mini { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--cream); font-size: 13px; }
+    .mini img { width: 34px; height: 34px; border-radius: 8px; }
+    main { flex: 1; display: grid; place-items: center; padding: 8px 16px 48px; }
+    .card {
+      width: 100%; max-width: 420px; border: 1px solid var(--line); border-radius: 20px; padding: 32px 28px;
+      background: radial-gradient(ellipse at 50% 0, rgba(217, 192, 143, .10), transparent 60%), var(--wine-deep);
+      box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .6);
+    }
+    .icon { width: 52px; height: 52px; margin: 0 auto 14px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--gold-lo); }
+    .icon svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.6; }
+    h1 { font-family: Fraunces, Georgia, serif; font-weight: 400; font-size: 28px; text-align: center; margin: 0 0 6px; }
+    .lead { color: var(--muted); text-align: center; margin: 0 0 22px; font-size: 14px; }
+    form { display: grid; gap: 14px; }
+    label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+    input {
+      font: inherit; color: var(--cream); background: rgba(239, 230, 214, .04); border: 1px solid var(--line);
+      border-radius: 10px; padding: 11px 12px; width: 100%;
+    }
+    input:focus { outline: 2px solid var(--gold); outline-offset: 1px; border-color: transparent; }
+    .pw { position: relative; }
+    .pw input { padding-right: 64px; }
+    .pw button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--gold); font: inherit; font-size: 12px; cursor: pointer; padding: 6px 8px; }
+    .hint { font-size: 12px; color: var(--muted); margin: -6px 0 0; }
+    .btn {
+      font: inherit; font-weight: 600; cursor: pointer; border-radius: 999px; padding: 12px 22px; border: 1px solid var(--gold);
+      background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--wine-deep); transition: transform .2s, box-shadow .2s;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 30px -12px rgba(243, 228, 192, .5); }
+    .btn:disabled { opacity: .6; cursor: progress; transform: none; }
+    .btn.ghost { background: transparent; color: var(--gold); }
+    .links { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 18px; }
+    .links button { background: none; border: 0; color: var(--gold); font: inherit; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
+    .msg { font-size: 13px; border-radius: 10px; padding: 10px 12px; margin: 0; }
+    .msg.err { color: var(--err); background: rgba(255, 155, 143, .08); border: 1px solid rgba(255, 155, 143, .25); }
+    .msg.ok { color: var(--ok); background: rgba(158, 216, 160, .08); border: 1px solid rgba(158, 216, 160, .25); }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+    .legal { display: flex; justify-content: center; gap: 8px 18px; flex-wrap: wrap; padding: 0 16px 28px; font-size: 12px; }
+    .legal a { color: var(--muted); text-decoration: none; }
+    .legal a:hover { color: var(--gold-hi); }
+    @media (max-width: 420px) { .card { padding: 26px 18px; } }
+  </style>
+</head>
+<body>
+  <nav><a class="mini" href="/"><img src="/favicon.svg" alt="" width="34" height="34"><span class="caps">Fin Advisor</span></a></nav>
+  <main>
+    <div class="card">
+      <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></svg></div>
+
+      <!-- Sign in -->
+      <section id="v-login" hidden>
+        <h1>Adviser sign-in</h1>
+        <p class="lead">Sign in with the password you set for this website.</p>
+        <form id="f-login" novalidate>
+          <p class="msg err" role="alert" hidden></p>
+          <label>Email<input name="email" type="email" autocomplete="username" required></label>
+          <label>Password<span class="pw"><input name="password" type="password" autocomplete="current-password" required><button type="button" class="show">Show</button></span></label>
+          <button class="btn">Sign in</button>
+        </form>
+        <div class="links"><button type="button" data-view="forgot">Forgot password?</button><button type="button" data-view="signup" id="toSignup" hidden>Create the first account</button></div>
+      </section>
+
+      <!-- Create account (first adviser of this workspace) -->
+      <section id="v-signup" hidden>
+        <h1>Create your account</h1>
+        <p class="lead">Set up the first adviser account for this workspace.</p>
+        <form id="f-signup" novalidate>
+          <p class="msg err" role="alert" hidden></p>
+          <label>Adviser name<input name="name" autocomplete="name" placeholder="e.g. A. Sharma" required></label>
+          <label>Email<input name="email" type="email" autocomplete="email" required></label>
+          <label>Password<span class="pw"><input name="password" type="password" autocomplete="new-password" minlength="8" required><button type="button" class="show">Show</button></span></label>
+          <p class="hint">At least 8 characters. Use a password you don't use anywhere else.</p>
+          <label>Confirm password<input name="confirm" type="password" autocomplete="new-password" required></label>
+          <button class="btn">Create account</button>
+        </form>
+        <div class="links"><button type="button" data-view="login">I already have an account</button></div>
+      </section>
+
+      <!-- Forgot password: email a reset link -->
+      <section id="v-forgot" hidden>
+        <h1>Forgot your password?</h1>
+        <p class="lead">Enter your account email and we'll send you a link to set a new password.</p>
+        <form id="f-forgot" novalidate>
+          <p class="msg err" role="alert" hidden></p>
+          <p class="msg ok" role="status" hidden></p>
+          <label>Email<input name="email" type="email" autocomplete="username" required></label>
+          <button class="btn">Send reset link</button>
+        </form>
+        <div class="links"><button type="button" data-view="login">Back to sign-in</button></div>
+      </section>
+
+      <!-- Opened from the emailed link: choose a new password -->
+      <section id="v-reset" hidden>
+        <h1>Choose a new password</h1>
+        <p class="lead">This link works once and expires 30 minutes after it was sent.</p>
+        <form id="f-reset" novalidate>
+          <p class="msg err" role="alert" hidden></p>
+          <label>New password<span class="pw"><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required><button type="button" class="show">Show</button></span></label>
+          <p class="hint">At least 8 characters.</p>
+          <label>Confirm new password<input name="confirm" type="password" autocomplete="new-password" required></label>
+          <button class="btn">Save new password</button>
+        </form>
+        <div class="links"><button type="button" data-view="forgot">Send a new link</button><button type="button" data-view="login">Back to sign-in</button></div>
+      </section>
+    </div>
+  </main>
+  <footer class="legal" aria-label="Footer">
+    <a href="/about.html">About us</a>
+    <a href="/contact.html">Contact us</a>
+    <a href="/privacy.html">Privacy policy</a>
+    <a href="/terms.html">Terms &amp; conditions</a>
+  </footer>
+
+  <script>
+    const $ = (s, el = document) => el.querySelector(s);
+    const params = new URLSearchParams(location.search);
+    // Only same-site paths, never "//host" or another origin.
+    const nextParam = params.get('next') ?? '';
+    const next = /^\/(?!\/)/.test(nextParam) && !nextParam.startsWith('/login.html') ? nextParam : '/app.html#/onboard';
+
+    // A reset link opens this page with ?reset=<token>. Keep the token in memory and remove it
+    // from the address bar and history.
+    const resetToken = params.get('reset');
+    if (resetToken) history.replaceState(null, '', location.pathname);
+
+    let canSignUp = false;
+    function show(view) {
+      for (const v of ['login', 'signup', 'forgot', 'reset']) $(`#v-${v}`).hidden = v !== view;
+      $('#toSignup').hidden = !canSignUp;
+      const first = $(`#v-${view} input`);
+      if (first) first.focus();
+    }
+    document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => show(b.dataset.view)));
+    document.querySelectorAll('.pw .show').forEach((b) => b.addEventListener('click', () => {
+      const i = b.previousElementSibling; const hidden = i.type === 'password';
+      i.type = hidden ? 'text' : 'password'; b.textContent = hidden ? 'Hide' : 'Show';
+    }));
+
+    async function post(url, body) {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Something went wrong. Please try again.');
+      return j;
+    }
+    function bind(form, handler) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const err = $('.msg.err', form), btn = $('.btn', form);
+        err.hidden = true;
+        const data = Object.fromEntries(new FormData(form));
+        try {
+          btn.disabled = true;
+          await handler(data);
+        } catch (ex) {
+          err.textContent = ex.message; err.hidden = false;
+        } finally { btn.disabled = false; }
+      });
+    }
+    bind($('#f-login'), async (d) => {
+      if (!d.email || !d.password) throw new Error('Enter your email and password.');
+      await post('/api/auth/login', d);
+      location.replace(next);
+    });
+    bind($('#f-signup'), async (d) => {
+      if (d.password !== d.confirm) throw new Error('The two passwords do not match.');
+      await post('/api/auth/signup', { name: d.name, email: d.email, password: d.password });
+      location.replace(next);
+    });
+    bind($('#f-forgot'), async (d) => {
+      if (!d.email) throw new Error('Enter your account email.');
+      const r = await post('/api/auth/forgot', { email: d.email });
+      const ok = $('#f-forgot .msg.ok');
+      ok.textContent = r.message; ok.hidden = false;
+    });
+    bind($('#f-reset'), async (d) => {
+      if (d.newPassword !== d.confirm) throw new Error('The two passwords do not match.');
+      await post('/api/auth/reset', { token: resetToken, newPassword: d.newPassword });
+      location.replace(next);
+    });
+
+    if (resetToken) show('reset');
+    else fetch('/api/auth/me').then((r) => r.json()).then((me) => {
+      if (me.adviser) return location.replace(next);
+      canSignUp = me.canSignUp;
+      show(params.get('view') === 'forgot' ? 'forgot' : canSignUp ? 'signup' : 'login');
+    }).catch(() => show('login'));
+  </script>
+  <script src="/fintel.js" data-theme="dark" defer></script>
+</body>
+</html>
